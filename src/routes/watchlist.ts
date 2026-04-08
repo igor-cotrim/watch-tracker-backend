@@ -4,7 +4,9 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { userWatchlist } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { tmdbService } from '../services/tmdb.js';
 import type { AuthenticatedRequest } from '../types/index.js';
+import type { MediaType } from '../types/index.js';
 
 const router = Router();
 
@@ -38,7 +40,26 @@ router.get('/', async (req, res, next) => {
       .from(userWatchlist)
       .where(and(...conditions));
 
-    res.json(items);
+    // Enrich with TMDB data (title, poster)
+    const enriched = await Promise.all(
+      items.map(async (item) => {
+        try {
+          const details = await tmdbService.getMediaDetails(
+            item.tmdbId,
+            item.mediaType as MediaType,
+          );
+          return {
+            ...item,
+            title: details.title ?? details.name ?? 'Unknown',
+            posterPath: details.poster_path,
+          };
+        } catch {
+          return { ...item, title: 'Unknown', posterPath: null };
+        }
+      }),
+    );
+
+    res.json(enriched);
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,8 @@
 import type { Response, NextFunction } from "express";
 import { createClient } from "@supabase/supabase-js";
+import { eq } from "drizzle-orm";
+import { db } from "../db/index.js";
+import { profiles } from "../db/schema.js";
 import type { AuthenticatedRequest } from "../types/index.js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -38,6 +41,19 @@ export async function authMiddleware(
     if (error || !user) {
       res.status(401).json({ error: "Invalid or expired token" });
       return;
+    }
+
+    // Ensure profile exists (auto-create on first authenticated request)
+    const [existing] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, user.id));
+
+    if (!existing) {
+      await db.insert(profiles).values({
+        id: user.id,
+        name: user.user_metadata?.name ?? user.email?.split("@")[0] ?? "User",
+      });
     }
 
     req.user = {
