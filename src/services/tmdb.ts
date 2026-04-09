@@ -27,6 +27,8 @@ export interface TMDBMediaDetails {
   release_date?: string;
   first_air_date?: string;
   genres: Array<{ id: number; name: string }>;
+  origin_country?: string[];
+  number_of_seasons?: number;
   credits?: {
     cast: Array<{
       id: number;

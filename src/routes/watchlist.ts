@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { userWatchlist } from '../db/schema.js';
+import { userWatchlist, userEpisodesWatched } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { tmdbService } from '../services/tmdb.js';
 import type { AuthenticatedRequest } from '../types/index.js';
@@ -40,7 +40,7 @@ router.get('/', async (req, res, next) => {
       .from(userWatchlist)
       .where(and(...conditions));
 
-    // Enrich with TMDB data (title, poster)
+    // Enrich with TMDB data (title, poster, isAnime)
     const enriched = await Promise.all(
       items.map(async (item) => {
         try {
@@ -48,13 +48,19 @@ router.get('/', async (req, res, next) => {
             item.tmdbId,
             item.mediaType as MediaType,
           );
+          const isAnime =
+            item.mediaType === 'tv' &&
+            Array.isArray(details.origin_country) &&
+            details.origin_country.includes('JP') &&
+            details.genres?.some((g) => g.id === 16);
           return {
             ...item,
             title: details.title ?? details.name ?? 'Unknown',
             posterPath: details.poster_path,
+            isAnime: isAnime || false,
           };
         } catch {
-          return { ...item, title: 'Unknown', posterPath: null };
+          return { ...item, title: 'Unknown', posterPath: null, isAnime: false };
         }
       }),
     );
@@ -89,6 +95,125 @@ router.post('/', async (req, res, next) => {
       .returning();
 
     res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /continue-watching — TV shows with status "watching" and their next unwatched episode
+router.get('/continue-watching', async (req, res, next) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user.id;
+
+    const watchingShows = await db
+      .select()
+      .from(userWatchlist)
+      .where(
+        and(
+          eq(userWatchlist.userId, userId),
+          eq(userWatchlist.status, 'watching'),
+          eq(userWatchlist.mediaType, 'tv'),
+        ),
+      );
+
+    const results = await Promise.allSettled(
+      watchingShows.map(async (show) => {
+        const [details, watchedEpisodes] = await Promise.all([
+          tmdbService.getMediaDetails(show.tmdbId, 'tv'),
+          db
+            .select()
+            .from(userEpisodesWatched)
+            .where(
+              and(
+                eq(userEpisodesWatched.userId, userId),
+                eq(userEpisodesWatched.tmdbId, show.tmdbId),
+              ),
+            ),
+        ]);
+
+        const isAnime =
+          Array.isArray(details.origin_country) &&
+          details.origin_country.includes('JP') &&
+          details.genres?.some((g) => g.id === 16);
+
+        const totalSeasons = details.number_of_seasons ?? 1;
+
+        // Compute next episode
+        let nextEpisode: {
+          seasonNumber: number;
+          episodeNumber: number;
+          name: string;
+          stillPath: string | null;
+          airDate: string | null;
+        } | null = null;
+
+        if (watchedEpisodes.length === 0) {
+          // Nothing watched yet — next is S1E1
+          const season1 = await tmdbService.getSeasonDetails(show.tmdbId, 1);
+          const ep1 = season1.episodes[0];
+          if (ep1) {
+            nextEpisode = {
+              seasonNumber: 1,
+              episodeNumber: ep1.episode_number,
+              name: ep1.name,
+              stillPath: ep1.still_path,
+              airDate: ep1.air_date,
+            };
+          }
+        } else {
+          // Find the last watched episode (max season, then max episode)
+          const last = watchedEpisodes.reduce((max, ep) => {
+            if (ep.seasonNumber > max.seasonNumber) return ep;
+            if (ep.seasonNumber === max.seasonNumber && ep.episodeNumber > max.episodeNumber) return ep;
+            return max;
+          });
+
+          const currentSeason = await tmdbService.getSeasonDetails(show.tmdbId, last.seasonNumber);
+          const nextInSeason = currentSeason.episodes.find(
+            (ep) => ep.episode_number === last.episodeNumber + 1,
+          );
+
+          if (nextInSeason) {
+            nextEpisode = {
+              seasonNumber: last.seasonNumber,
+              episodeNumber: nextInSeason.episode_number,
+              name: nextInSeason.name,
+              stillPath: nextInSeason.still_path,
+              airDate: nextInSeason.air_date,
+            };
+          } else if (last.seasonNumber < totalSeasons) {
+            // Move to next season
+            const nextSeason = await tmdbService.getSeasonDetails(show.tmdbId, last.seasonNumber + 1);
+            const firstEp = nextSeason.episodes[0];
+            if (firstEp) {
+              nextEpisode = {
+                seasonNumber: last.seasonNumber + 1,
+                episodeNumber: firstEp.episode_number,
+                name: firstEp.name,
+                stillPath: firstEp.still_path,
+                airDate: firstEp.air_date,
+              };
+            }
+          }
+          // If nextEpisode is still null, show is fully caught up — excluded below
+        }
+
+        return {
+          id: show.id,
+          tmdbId: show.tmdbId,
+          title: details.title ?? details.name ?? 'Unknown',
+          posterPath: details.poster_path,
+          isAnime: isAnime || false,
+          nextEpisode,
+        };
+      }),
+    );
+
+    const items = results
+      .flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+      .filter((item) => item.nextEpisode !== null);
+
+    res.json(items);
   } catch (error) {
     next(error);
   }

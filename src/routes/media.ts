@@ -30,8 +30,10 @@ router.get('/:type/:id', async (req, res, next) => {
       return;
     }
 
-    const details = await tmdbService.getMediaDetails(mediaId, type as MediaType);
-    res.json(details);
+    const raw = await tmdbService.getMediaDetails(mediaId, type as MediaType);
+    // Rename "watch/providers" to "watch_providers" so iOS snake_case decoder maps it to watchProviders
+    const { 'watch/providers': watchProviders, ...rest } = raw as any;
+    res.json({ ...rest, watch_providers: watchProviders });
   } catch (error) {
     next(error);
   }
@@ -155,6 +157,39 @@ router.delete(
         );
 
       res.json({ message: 'Episode unmarked as watched' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// GET /tv/:id/seasons/:seasonNumber/watched — get watched episode numbers for a season (auth required)
+router.get(
+  '/tv/:id/seasons/:seasonNumber/watched',
+  authMiddleware as any,
+  async (req, res, next) => {
+    try {
+      const userId = (req as unknown as AuthenticatedRequest).user.id;
+      const tvId = parseInt(req.params.id, 10);
+      const seasonNumber = parseInt(req.params.seasonNumber, 10);
+
+      if (isNaN(tvId) || isNaN(seasonNumber)) {
+        res.status(400).json({ error: 'Invalid TV ID or season number' });
+        return;
+      }
+
+      const watched = await db
+        .select()
+        .from(userEpisodesWatched)
+        .where(
+          and(
+            eq(userEpisodesWatched.userId, userId),
+            eq(userEpisodesWatched.tmdbId, tvId),
+            eq(userEpisodesWatched.seasonNumber, seasonNumber),
+          ),
+        );
+
+      res.json({ watchedEpisodes: watched.map((e) => e.episodeNumber) });
     } catch (error) {
       next(error);
     }
