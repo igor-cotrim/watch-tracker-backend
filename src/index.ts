@@ -1,33 +1,19 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import watchlistRoutes from "./routes/watchlist.js";
-import mediaRoutes from "./routes/media.js";
-import discoverRoutes from "./routes/discover.js";
-import { errorHandler } from "./middleware/errorHandler.js";
+import 'dotenv/config';
+import app from './app.js';
+import { env } from './config/env.js';
 
-const app = express();
-const PORT = parseInt(process.env.PORT || "3000", 10);
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Routes
-app.use("/api/watchlist", watchlistRoutes);
-app.use("/api/media", mediaRoutes);
-app.use("/api/discover", discoverRoutes);
-
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+const server = app.listen(env.PORT, () => {
+  console.warn(`WatchTracker API running on http://localhost:${env.PORT}`);
 });
 
-// Global error handler
-app.use(errorHandler);
+const shutdown = (signal: string) => {
+  console.warn(`${signal} received. Shutting down gracefully...`);
+  server.close(() => {
+    console.warn('HTTP server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+};
 
-app.listen(PORT, () => {
-  console.log(`WatchTracker API running on http://localhost:${PORT}`);
-});
-
-export default app;
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

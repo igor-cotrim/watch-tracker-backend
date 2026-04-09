@@ -1,20 +1,34 @@
-import axios from "axios";
-import type { MediaType } from "../types/index.js";
-
-const TMDB_API_KEY = process.env.TMDB_API_KEY;
-const TMDB_BASE_URL =
-  process.env.TMDB_BASE_URL || "https://api.themoviedb.org/3";
-
-if (!TMDB_API_KEY) {
-  throw new Error("TMDB_API_KEY environment variable is not set");
-}
+import axios from 'axios';
+import type { MediaType } from '../types/index.js';
+import { env } from '../config/env.js';
 
 const tmdbClient = axios.create({
-  baseURL: TMDB_BASE_URL,
+  baseURL: env.TMDB_BASE_URL,
   params: {
-    api_key: TMDB_API_KEY,
+    api_key: env.TMDB_API_KEY,
   },
 });
+
+export class TMDBError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly tmdbMessage?: string,
+  ) {
+    super(message);
+    this.name = 'TMDBError';
+  }
+}
+
+function handleTMDBError(error: unknown): never {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status ?? 500;
+    const tmdbMessage = (error.response?.data as { status_message?: string })?.status_message;
+    const message = tmdbMessage ?? error.message;
+    throw new TMDBError(`TMDB API error: ${message}`, status, tmdbMessage);
+  }
+  throw error;
+}
 
 export interface TMDBMediaDetails {
   id: number;
@@ -43,7 +57,7 @@ export interface TMDBMediaDetails {
       profile_path: string | null;
     }>;
   };
-  "watch/providers"?: {
+  'watch/providers'?: {
     results: Record<string, unknown>;
   };
 }
@@ -106,111 +120,126 @@ export interface TMDBProviderList {
 }
 
 export const tmdbService = {
-  async getMediaDetails(
-    id: number,
-    type: MediaType,
-  ): Promise<TMDBMediaDetails> {
-    const { data } = await tmdbClient.get<TMDBMediaDetails>(`/${type}/${id}`, {
-      params: {
-        append_to_response: "credits,watch/providers",
-      },
-    });
-    return data;
+  async getMediaDetails(id: number, type: MediaType): Promise<TMDBMediaDetails> {
+    try {
+      const { data } = await tmdbClient.get<TMDBMediaDetails>(`/${type}/${id}`, {
+        params: { append_to_response: 'credits,watch/providers' },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async getTrending(
-    type: "movie" | "tv" | "all",
-    timeWindow: "day" | "week",
+    type: 'movie' | 'tv' | 'all',
+    timeWindow: 'day' | 'week',
   ): Promise<TMDBSearchResult> {
-    const { data } = await tmdbClient.get<TMDBSearchResult>(
-      `/trending/${type}/${timeWindow}`,
-    );
-    return data;
+    try {
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/trending/${type}/${timeWindow}`);
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
-  async search(
-    query: string,
-    type?: MediaType,
-    year?: number,
-  ): Promise<TMDBSearchResult> {
-    const searchType = type || "multi";
-    const yearParam = type === "tv" ? "first_air_date_year" : "year";
-    const { data } = await tmdbClient.get<TMDBSearchResult>(
-      `/search/${searchType}`,
-      {
+  async search(query: string, type?: MediaType, year?: number): Promise<TMDBSearchResult> {
+    try {
+      const searchType = type ?? 'multi';
+      const yearParam = type === 'tv' ? 'first_air_date_year' : 'year';
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/search/${searchType}`, {
         params: { query, ...(year && { [yearParam]: year }) },
-      },
-    );
-    return data;
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async discover(params: DiscoverParams): Promise<TMDBSearchResult> {
-    const { type, ...filters } = params;
-    const { data } = await tmdbClient.get<TMDBSearchResult>(
-      `/discover/${type}`,
-      {
+    try {
+      const { type, ...filters } = params;
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/discover/${type}`, {
         params: filters,
-      },
-    );
-    return data;
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async getNowPlaying(): Promise<TMDBSearchResult> {
-    const { data } = await tmdbClient.get<TMDBSearchResult>(
-      "/movie/now_playing",
-      {
-        params: { region: "BR" },
-      },
-    );
-    return data;
+    try {
+      const { data } = await tmdbClient.get<TMDBSearchResult>('/movie/now_playing', {
+        params: { region: 'BR' },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
-  async getSeasonDetails(
-    tvId: number,
-    seasonNumber: number,
-  ): Promise<TMDBSeasonDetails> {
-    const { data } = await tmdbClient.get<TMDBSeasonDetails>(
-      `/tv/${tvId}/season/${seasonNumber}`,
-    );
-    return data;
+  async getSeasonDetails(tvId: number, seasonNumber: number): Promise<TMDBSeasonDetails> {
+    try {
+      const { data } = await tmdbClient.get<TMDBSeasonDetails>(
+        `/tv/${tvId}/season/${seasonNumber}`,
+      );
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async getTopRated(type: MediaType, page?: number): Promise<TMDBSearchResult> {
-    const { data } = await tmdbClient.get<TMDBSearchResult>(
-      `/${type}/top_rated`,
-      { params: { ...(page && { page }) } },
-    );
-    return data;
+    try {
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/${type}/top_rated`, {
+        params: { ...(page && { page }) },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async getUpcoming(page?: number): Promise<TMDBSearchResult> {
-    const { data } = await tmdbClient.get<TMDBSearchResult>("/movie/upcoming", {
-      params: { region: "BR", ...(page && { page }) },
-    });
-    return data;
+    try {
+      const { data } = await tmdbClient.get<TMDBSearchResult>('/movie/upcoming', {
+        params: { region: 'BR', ...(page && { page }) },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async getPopular(type: MediaType, page?: number): Promise<TMDBSearchResult> {
-    const { data } = await tmdbClient.get<TMDBSearchResult>(
-      `/${type}/popular`,
-      { params: { ...(page && { page }) } },
-    );
-    return data;
+    try {
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/${type}/popular`, {
+        params: { ...(page && { page }) },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
   async getGenres(type: MediaType): Promise<TMDBGenreList> {
-    const { data } = await tmdbClient.get<TMDBGenreList>(`/genre/${type}/list`);
-    return data;
+    try {
+      const { data } = await tmdbClient.get<TMDBGenreList>(`/genre/${type}/list`);
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 
-  async getWatchProviders(
-    type: MediaType,
-    region?: string,
-  ): Promise<TMDBProviderList> {
-    const { data } = await tmdbClient.get<TMDBProviderList>(
-      `/watch/providers/${type}`,
-      { params: { ...(region && { watch_region: region }) } },
-    );
-    return data;
+  async getWatchProviders(type: MediaType, region?: string): Promise<TMDBProviderList> {
+    try {
+      const { data } = await tmdbClient.get<TMDBProviderList>(`/watch/providers/${type}`, {
+        params: { ...(region && { watch_region: region }) },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
   },
 };

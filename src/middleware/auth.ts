@@ -1,68 +1,67 @@
-import type { Response, NextFunction } from "express";
-import { createClient } from "@supabase/supabase-js";
-import { eq } from "drizzle-orm";
-import { db } from "../db/index.js";
-import { profiles } from "../db/schema.js";
-import type { AuthenticatedRequest } from "../types/index.js";
+import type { Request, Response, NextFunction } from 'express';
+import { createClient } from '@supabase/supabase-js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { profiles } from '../db/schema.js';
+import { env } from '../config/env.js';
+import type { AuthenticatedRequest } from '../types/index.js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SECRET_KEY;
-
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  throw new Error(
-    "SUPABASE_URL and SUPABASE_SECRET_KEY must be set in environment variables",
-  );
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
 export async function authMiddleware(
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Missing or invalid authorization header' });
+    return;
+  }
+
+  const token = authHeader.substring(7);
+  let userId: string;
+  let userEmail: string;
+
+  // Block 1: Supabase token verification — 401 on failure
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res
-        .status(401)
-        .json({ error: "Missing or invalid authorization header" });
-      return;
-    }
-
-    const token = authHeader.substring(7);
-
     const {
       data: { user },
       error,
     } = await supabase.auth.getUser(token);
 
     if (error || !user) {
-      res.status(401).json({ error: "Invalid or expired token" });
+      res.status(401).json({ error: 'Invalid or expired token' });
       return;
     }
 
-    // Ensure profile exists (auto-create on first authenticated request)
-    const [existing] = await db
-      .select()
-      .from(profiles)
-      .where(eq(profiles.id, user.id));
+    userId = user.id;
+    userEmail = user.email!;
 
-    if (!existing) {
-      await db.insert(profiles).values({
-        id: user.id,
-        name: user.user_metadata?.name ?? user.email?.split("@")[0] ?? "User",
-      });
+    // Block 2: Profile auto-creation — propagate DB errors as 500
+    try {
+      const [existing] = await db.select().from(profiles).where(eq(profiles.id, userId));
+
+      if (!existing) {
+        await db.insert(profiles).values({
+          id: userId,
+          name: user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'User',
+        });
+      }
+    } catch (dbError) {
+      next(dbError);
+      return;
     }
-
-    req.user = {
-      id: user.id,
-      email: user.email!,
-    };
-
-    next();
-  } catch (error) {
-    res.status(401).json({ error: "Authentication failed" });
+  } catch {
+    res.status(401).json({ error: 'Authentication failed' });
+    return;
   }
+
+  (req as AuthenticatedRequest).user = { id: userId, email: userEmail };
+  next();
+}
+
+export function getAuthUser(req: Request): { id: string; email: string } {
+  return (req as AuthenticatedRequest).user;
 }
