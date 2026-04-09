@@ -30,7 +30,8 @@ Client → Express middleware (CORS, JSON parsing)
 - **`/watchlist`** — CRUD for user watchlists. All routes require auth. Supports filtering by `status` and `media_type` query params.
 - **`/media`** — Media details from TMDB (public), plus user ratings and episode watch tracking (auth required).
 - **`/discover`** — Trending, search, now-playing (Brazil region), filtered discovery. All public.
-- **`/health`** — Health check endpoint (defined in `src/index.ts`).
+- **`/profile`** — User profile stats (movies watched, shows tracking, episodes watched). All routes require auth.
+- **`/health`** — Health check endpoint (defined in `src/app.ts`).
 
 ### Auth Pattern
 

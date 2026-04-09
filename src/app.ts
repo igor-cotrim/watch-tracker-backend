@@ -11,6 +11,7 @@ import { db } from './db/index.js';
 import watchlistRoutes from './routes/watchlist.js';
 import mediaRoutes from './routes/media.js';
 import discoverRoutes from './routes/discover.js';
+import profileRoutes from './routes/profile.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -52,6 +53,7 @@ app.use(express.json());
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/discover', discoverRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Health check
 app.get('/api/health', async (_req, res) => {
