@@ -43,6 +43,28 @@ export interface TMDBMediaDetails {
   genres: Array<{ id: number; name: string }>;
   origin_country?: string[];
   number_of_seasons?: number;
+  next_episode_to_air: {
+    id: number;
+    name: string;
+    overview: string;
+    air_date: string;
+    episode_number: number;
+    season_number: number;
+    still_path: string | null;
+    runtime: number | null;
+    vote_average: number;
+  } | null;
+  last_episode_to_air: {
+    id: number;
+    name: string;
+    overview: string;
+    air_date: string;
+    episode_number: number;
+    season_number: number;
+    still_path: string | null;
+    runtime: number | null;
+    vote_average: number;
+  } | null;
   credits?: {
     cast: Array<{
       id: number;

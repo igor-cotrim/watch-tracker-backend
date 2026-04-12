@@ -9,6 +9,25 @@ export function makeTMDBMedia(overrides: Partial<TMDBMediaDetails> = {}): TMDBMe
     backdrop_path: null,
     vote_average: 8.4,
     genres: [],
+    next_episode_to_air: null,
+    last_episode_to_air: null,
+    ...overrides,
+  };
+}
+
+export function makeNextEpisode(
+  overrides: Partial<NonNullable<TMDBMediaDetails['next_episode_to_air']>> = {},
+): NonNullable<TMDBMediaDetails['next_episode_to_air']> {
+  return {
+    id: 999,
+    name: 'Upcoming Episode',
+    overview: '',
+    air_date: '2099-01-01',
+    episode_number: 5,
+    season_number: 2,
+    still_path: null,
+    runtime: 45,
+    vote_average: 0,
     ...overrides,
   };
 }

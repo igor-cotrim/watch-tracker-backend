@@ -44,6 +44,7 @@ import {
   makeWatchlistItem,
   makeTMDBMedia,
   makeTMDBSeasonDetails,
+  makeNextEpisode,
 } from '../../helpers/mockFactory.js';
 
 const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -262,6 +263,132 @@ describe('Watchlist routes', () => {
       const res = await request.get('/api/watchlist/continue-watching');
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('GET /api/watchlist/upcoming', () => {
+    it('returns 200 with shows that have a next_episode_to_air', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv', tmdbId: 100 });
+      mockDb.select.mockReturnValue(makeSelectChain([tvShow]));
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({
+          id: 100,
+          title: undefined,
+          name: 'Daredevil: Born Again',
+          next_episode_to_air: makeNextEpisode({ air_date: '2099-04-08', season_number: 2, episode_number: 5, name: 'The Grand Design' }),
+        }),
+      );
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].title).toBe('Daredevil: Born Again');
+      expect(res.body[0].nextEpisode.seasonNumber).toBe(2);
+      expect(res.body[0].nextEpisode.episodeNumber).toBe(5);
+      expect(res.body[0].nextEpisode.name).toBe('The Grand Design');
+    });
+
+    it('filters out shows where next_episode_to_air is null', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv' });
+      mockDb.select.mockReturnValue(makeSelectChain([tvShow]));
+      mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ next_episode_to_air: null }));
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('returns empty array when watchlist has no TV shows', async () => {
+      mockDb.select.mockReturnValue(makeSelectChain([]));
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('sorts results by airDate ascending', async () => {
+      const show1 = makeWatchlistItem({ mediaType: 'tv', tmdbId: 1 });
+      const show2 = makeWatchlistItem({ mediaType: 'tv', tmdbId: 2 });
+      mockDb.select.mockReturnValue(makeSelectChain([show1, show2]));
+
+      mockTmdb.getMediaDetails
+        .mockResolvedValueOnce(
+          makeTMDBMedia({ id: 1, title: undefined, name: 'Show Later', next_episode_to_air: makeNextEpisode({ air_date: '2099-06-01' }) }),
+        )
+        .mockResolvedValueOnce(
+          makeTMDBMedia({ id: 2, title: undefined, name: 'Show Sooner', next_episode_to_air: makeNextEpisode({ air_date: '2099-04-01' }) }),
+        );
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body[0].title).toBe('Show Sooner');
+      expect(res.body[1].title).toBe('Show Later');
+    });
+
+    it('computes daysUntilAir correctly for a far-future date', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv' });
+      mockDb.select.mockReturnValue(makeSelectChain([tvShow]));
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({ next_episode_to_air: makeNextEpisode({ air_date: '2099-01-01' }) }),
+      );
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body[0].nextEpisode.daysUntilAir).toBeGreaterThan(0);
+    });
+
+    it('excludes shows where TMDB call fails (allSettled)', async () => {
+      const show1 = makeWatchlistItem({ mediaType: 'tv', tmdbId: 1 });
+      const show2 = makeWatchlistItem({ mediaType: 'tv', tmdbId: 2 });
+      mockDb.select.mockReturnValue(makeSelectChain([show1, show2]));
+
+      mockTmdb.getMediaDetails
+        .mockRejectedValueOnce(new Error('TMDB error'))
+        .mockResolvedValueOnce(
+          makeTMDBMedia({ id: 2, title: undefined, name: 'Good Show', next_episode_to_air: makeNextEpisode() }),
+        );
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].title).toBe('Good Show');
+    });
+
+    it('extracts BR flatrate watch providers', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv' });
+      mockDb.select.mockReturnValue(makeSelectChain([tvShow]));
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({
+          next_episode_to_air: makeNextEpisode(),
+          'watch/providers': {
+            results: {
+              BR: {
+                flatrate: [{ provider_name: 'Disney+' }, { provider_name: 'Star+' }],
+              },
+            },
+          },
+        }),
+      );
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body[0].watchProviders).toContain('Disney+');
+      expect(res.body[0].watchProviders).toContain('Star+');
+    });
+
+    it('returns empty watchProviders when no BR providers', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv' });
+      mockDb.select.mockReturnValue(makeSelectChain([tvShow]));
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({
+          next_episode_to_air: makeNextEpisode(),
+          'watch/providers': { results: {} },
+        }),
+      );
+
+      const res = await request.get('/api/watchlist/upcoming');
+      expect(res.status).toBe(200);
+      expect(res.body[0].watchProviders).toEqual([]);
     });
   });
 

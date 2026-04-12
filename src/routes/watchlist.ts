@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db, isUniqueConstraintError } from '../db/index.js';
 import { userWatchlist, userEpisodesWatched } from '../db/schema.js';
 import { authMiddleware, getAuthUser } from '../middleware/auth.js';
@@ -216,6 +216,81 @@ router.get('/continue-watching', async (req, res, next) => {
       .filter((item) => item.nextEpisode !== null);
 
     res.json(items);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /upcoming — TV shows in the user's watchlist that have a next_episode_to_air
+router.get('/upcoming', async (req, res, next) => {
+  try {
+    const { id: userId } = getAuthUser(req);
+
+    const tvShows = await db
+      .select()
+      .from(userWatchlist)
+      .where(
+        and(
+          eq(userWatchlist.userId, userId),
+          eq(userWatchlist.mediaType, 'tv'),
+          inArray(userWatchlist.status, ['watching', 'plan_to_watch']),
+        ),
+      );
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const results = await Promise.allSettled(
+      tvShows.map(async (show) => {
+        const details = await tmdbService.getMediaDetails(show.tmdbId, 'tv');
+
+        if (!details.next_episode_to_air) return null;
+
+        const ep = details.next_episode_to_air;
+        const airDate = new Date(ep.air_date);
+        const daysUntilAir = Math.ceil(
+          (airDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        const isAnime =
+          Array.isArray(details.origin_country) &&
+          details.origin_country.includes('JP') &&
+          details.genres?.some((g) => g.id === GENRE_ID.ANIMATION);
+
+        const providers =
+          (
+            details['watch/providers']?.results as Record<
+              string,
+              { flatrate?: Array<{ provider_name: string }> }
+            >
+          )?.BR?.flatrate?.map((p) => p.provider_name) ?? [];
+
+        return {
+          tmdbId: show.tmdbId,
+          title: details.title ?? details.name ?? 'Unknown',
+          posterPath: details.poster_path,
+          isAnime: isAnime || false,
+          nextEpisode: {
+            seasonNumber: ep.season_number,
+            episodeNumber: ep.episode_number,
+            name: ep.name,
+            airDate: ep.air_date,
+            daysUntilAir,
+            stillPath: ep.still_path,
+          },
+          watchProviders: providers,
+        };
+      }),
+    );
+
+    const upcoming = results
+      .flatMap((r) => (r.status === 'fulfilled' && r.value !== null ? [r.value] : []))
+      .sort(
+        (a, b) =>
+          new Date(a.nextEpisode.airDate).getTime() - new Date(b.nextEpisode.airDate).getTime(),
+      );
+
+    res.json(upcoming);
   } catch (error) {
     next(error);
   }
