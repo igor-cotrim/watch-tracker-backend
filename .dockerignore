@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.*
+*.md
+drizzle
+tasks
+coverage
+.eslintrc*
+.prettierrc*
+vitest.config*
