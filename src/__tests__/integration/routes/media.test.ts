@@ -299,4 +299,84 @@ describe('Media routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('POST /api/media/tv/:id/watch-all', () => {
+    function setupWatchAll({
+      numberOfSeasons,
+      seasonDetails,
+      existingWatched,
+    }: {
+      numberOfSeasons: number;
+      seasonDetails?: ReturnType<typeof makeTMDBSeasonDetails>;
+      existingWatched?: { episodeNumber: number }[];
+    }) {
+      const show = makeTMDBMedia({ id: 1396, number_of_seasons: numberOfSeasons });
+      mockTmdb.getMediaDetails.mockResolvedValue(show);
+      mockTmdb.getSeasonDetails.mockResolvedValue(seasonDetails ?? makeTMDBSeasonDetails());
+      mockDb.select.mockReturnValue(makeSelectChain(existingWatched ?? []));
+      const mockInsert = { values: vi.fn().mockResolvedValue(undefined) };
+      mockDb.insert.mockReturnValue(mockInsert);
+      return { mockInsert };
+    }
+
+    it('marks all episodes across all seasons and returns markedCount', async () => {
+      // 2 seasons × 2 episodes each = 4 total, none watched yet
+      const { mockInsert } = setupWatchAll({ numberOfSeasons: 2 });
+
+      const res = await request.post('/api/media/tv/1396/watch-all');
+      expect(res.status).toBe(201);
+      expect(res.body.markedCount).toBe(4);
+      expect(mockInsert.values).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips already-watched episodes and counts only new ones', async () => {
+      // 1 season, 2 episodes, episode 1 already watched
+      setupWatchAll({
+        numberOfSeasons: 1,
+        existingWatched: [{ episodeNumber: 1 }],
+      });
+
+      const res = await request.post('/api/media/tv/1396/watch-all');
+      expect(res.status).toBe(201);
+      expect(res.body.markedCount).toBe(1);
+      const insertedValues = mockDb.insert.mock.results[0].value.values.mock
+        .calls[0][0] as Array<{ episodeNumber: number }>;
+      expect(insertedValues.every((v: { episodeNumber: number }) => v.episodeNumber !== 1)).toBe(
+        true,
+      );
+    });
+
+    it('returns markedCount 0 and skips TMDB season calls when number_of_seasons is 0', async () => {
+      setupWatchAll({ numberOfSeasons: 0 });
+
+      const res = await request.post('/api/media/tv/1396/watch-all');
+      expect(res.status).toBe(201);
+      expect(res.body.markedCount).toBe(0);
+      expect(mockTmdb.getSeasonDetails).not.toHaveBeenCalled();
+    });
+
+    it('does not call db.insert when all episodes are already watched', async () => {
+      setupWatchAll({
+        numberOfSeasons: 1,
+        existingWatched: [{ episodeNumber: 1 }, { episodeNumber: 2 }],
+      });
+
+      const res = await request.post('/api/media/tv/1396/watch-all');
+      expect(res.status).toBe(201);
+      expect(res.body.markedCount).toBe(0);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when TMDB getMediaDetails fails', async () => {
+      mockTmdb.getMediaDetails.mockRejectedValue(new Error('TMDB unavailable'));
+
+      const res = await request.post('/api/media/tv/1396/watch-all');
+      expect(res.status).toBe(500);
+    });
+
+    it('returns 400 for non-numeric TV ID', async () => {
+      const res = await request.post('/api/media/tv/abc/watch-all');
+      expect(res.status).toBe(400);
+    });
+  });
 });

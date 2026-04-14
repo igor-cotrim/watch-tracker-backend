@@ -1,17 +1,36 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db, isUniqueConstraintError } from '../db/index.js';
-import { userRatings, userEpisodesWatched } from '../db/schema.js';
+import { userRatings, userEpisodesWatched, userWatchlist } from '../db/schema.js';
 import { authMiddleware, getAuthUser } from '../middleware/auth.js';
+import { createClient } from '@supabase/supabase-js';
+import { env } from '../config/env.js';
 import { tmdbService } from '../services/tmdb.js';
+import { checkAndUpdateTVStatus, revertCompletedToWatching } from '../services/watchStatus.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
 
+const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY);
+
 const ratingSchema = z.object({
   rating: z.number().int().min(1).max(10),
 });
+
+/** Attempt to extract userId from a Bearer token without failing the request. */
+async function tryGetUserId(req: Request): Promise<string | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.substring(7);
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return null;
+    return user.id;
+  } catch {
+    return null;
+  }
+}
 
 // GET /:type/:id — get media details from TMDB (no auth)
 router.get('/:type/:id', async (req, res, next) => {
@@ -32,7 +51,38 @@ router.get('/:type/:id', async (req, res, next) => {
     const raw = await tmdbService.getMediaDetails(mediaId, type as MediaType);
     // Rename "watch/providers" to "watch_providers" so iOS snake_case decoder maps it to watchProviders
     const { 'watch/providers': watchProviders, ...rest } = raw;
-    res.json({ ...rest, watch_providers: watchProviders });
+
+    // Optional auth: check if a completed TV show has new aired episodes
+    let watchlistStatus: string | null = null;
+    if (type === 'tv') {
+      const userId = await tryGetUserId(req);
+      if (userId) {
+        const [entry] = await db
+          .select()
+          .from(userWatchlist)
+          .where(
+            and(
+              eq(userWatchlist.userId, userId),
+              eq(userWatchlist.tmdbId, mediaId),
+              eq(userWatchlist.mediaType, 'tv'),
+            ),
+          );
+
+        if (entry) {
+          watchlistStatus = entry.status;
+
+          // If show was completed but has a next episode to air, check for unwatched aired episodes
+          if (entry.status === 'completed' && raw.next_episode_to_air) {
+            const statusChanged = await revertCompletedToWatching(userId, mediaId);
+            if (statusChanged) {
+              watchlistStatus = statusChanged;
+            }
+          }
+        }
+      }
+    }
+
+    res.json({ ...rest, watch_providers: watchProviders, watchlist_status: watchlistStatus });
   } catch (error) {
     next(error);
   }
@@ -121,7 +171,8 @@ router.post(
           .values({ userId, tmdbId: tvId, seasonNumber, episodeNumber })
           .returning();
 
-        res.status(201).json(episode);
+        const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
+        res.status(201).json({ ...episode, statusChanged: statusChanged ?? null });
       } catch (dbError) {
         if (isUniqueConstraintError(dbError)) {
           res.status(409).json({ error: 'Episode already marked as watched' });
@@ -162,7 +213,8 @@ router.delete(
           ),
         );
 
-      res.json({ message: 'Episode unmarked as watched' });
+      const statusChanged = await revertCompletedToWatching(userId, tvId);
+      res.json({ message: 'Episode unmarked as watched', statusChanged: statusChanged ?? null });
     } catch (error) {
       next(error);
     }
@@ -233,7 +285,8 @@ router.post('/tv/:id/seasons/:seasonNumber/watch', authMiddleware, async (req, r
       await db.insert(userEpisodesWatched).values(toInsert);
     }
 
-    res.status(201).json({ message: `Marked ${toInsert.length} episodes as watched` });
+    const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
+    res.status(201).json({ message: `Marked ${toInsert.length} episodes as watched`, statusChanged: statusChanged ?? null });
   } catch (error) {
     next(error);
   }
@@ -261,7 +314,66 @@ router.delete('/tv/:id/seasons/:seasonNumber/watch', authMiddleware, async (req,
         ),
       );
 
-    res.json({ message: 'Season unmarked as watched' });
+    const statusChanged = await revertCompletedToWatching(userId, tvId);
+    res.json({ message: 'Season unmarked as watched', statusChanged: statusChanged ?? null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /tv/:id/watch-all — mark all episodes in all seasons as watched (auth required)
+router.post('/tv/:id/watch-all', authMiddleware, async (req, res, next) => {
+  try {
+    const { id: userId } = getAuthUser(req);
+    const tvId = parseInt(String(req.params.id), 10);
+
+    if (isNaN(tvId)) {
+      res.status(400).json({ error: 'Invalid TV ID' });
+      return;
+    }
+
+    const show = await tmdbService.getMediaDetails(tvId, 'tv');
+    const numberOfSeasons = show.number_of_seasons ?? 0;
+
+    if (numberOfSeasons === 0) {
+      res.status(201).json({ markedCount: 0 });
+      return;
+    }
+
+    const seasonNumbers = Array.from({ length: numberOfSeasons }, (_, i) => i + 1);
+
+    const counts = await Promise.all(
+      seasonNumbers.map(async (seasonNumber) => {
+        const season = await tmdbService.getSeasonDetails(tvId, seasonNumber);
+        const episodeNumbers = season.episodes.map((e) => e.episode_number);
+
+        const existing = await db
+          .select()
+          .from(userEpisodesWatched)
+          .where(
+            and(
+              eq(userEpisodesWatched.userId, userId),
+              eq(userEpisodesWatched.tmdbId, tvId),
+              eq(userEpisodesWatched.seasonNumber, seasonNumber),
+            ),
+          );
+
+        const existingEpisodes = new Set(existing.map((e) => e.episodeNumber));
+        const toInsert = episodeNumbers
+          .filter((ep) => !existingEpisodes.has(ep))
+          .map((ep) => ({ userId, tmdbId: tvId, seasonNumber, episodeNumber: ep }));
+
+        if (toInsert.length > 0) {
+          await db.insert(userEpisodesWatched).values(toInsert);
+        }
+
+        return toInsert.length;
+      }),
+    );
+
+    const markedCount = counts.reduce((a, b) => a + b, 0);
+    const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
+    res.status(201).json({ markedCount, statusChanged: statusChanged ?? null });
   } catch (error) {
     next(error);
   }

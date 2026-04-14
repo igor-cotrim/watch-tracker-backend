@@ -296,6 +296,49 @@ router.get('/upcoming', async (req, res, next) => {
   }
 });
 
+// PATCH /:id/status — update watchlist item status
+router.patch('/:id/status', async (req, res, next) => {
+  try {
+    const { id: userId } = getAuthUser(req);
+    const itemId = parseInt(req.params.id, 10);
+
+    if (isNaN(itemId)) {
+      res.status(400).json({ error: 'Invalid item ID' });
+      return;
+    }
+
+    const updateStatusSchema = z.object({
+      status: z.enum(['watching', 'completed', 'plan_to_watch', 'dropped']),
+    });
+
+    const parsed = updateStatusSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(userWatchlist)
+      .where(and(eq(userWatchlist.id, itemId), eq(userWatchlist.userId, userId)));
+
+    if (!existing) {
+      res.status(404).json({ error: 'Item not found or not owned by user' });
+      return;
+    }
+
+    const [updated] = await db
+      .update(userWatchlist)
+      .set({ status: parsed.data.status })
+      .where(eq(userWatchlist.id, itemId))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // DELETE /:id — remove item from watchlist (verify ownership)
 router.delete('/:id', async (req, res, next) => {
   try {
