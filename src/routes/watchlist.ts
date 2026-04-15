@@ -237,8 +237,11 @@ router.get('/upcoming', async (req, res, next) => {
         ),
       );
 
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // Use the local server clock to determine "today" as a calendar date.
+    // We compare date strings, not timestamps, because air_date from TMDB is
+    // a pure calendar date (e.g. "2026-04-15") with no time component.
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const results = await Promise.allSettled(
       tvShows.map(async (show) => {
@@ -247,10 +250,11 @@ router.get('/upcoming', async (req, res, next) => {
         if (!details.next_episode_to_air) return null;
 
         const ep = details.next_episode_to_air;
-        const airDate = new Date(ep.air_date);
-        const daysUntilAir = Math.ceil(
-          (airDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-        );
+
+        // Parse both dates at noon UTC to avoid any DST / timezone shift.
+        const airMs = Date.parse(`${ep.air_date}T12:00:00Z`);
+        const todayMs = Date.parse(`${todayStr}T12:00:00Z`);
+        const daysUntilAir = Math.round((airMs - todayMs) / (1000 * 60 * 60 * 24));
 
         const isAnime =
           Array.isArray(details.origin_country) &&
