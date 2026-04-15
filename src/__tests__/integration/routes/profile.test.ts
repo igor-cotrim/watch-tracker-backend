@@ -43,10 +43,10 @@ describe('Profile routes', () => {
   describe('GET /api/profile/stats', () => {
     it('returns 200 with all stats fields', async () => {
       mockDb.select
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(5)))  // movies_watched
+        .mockReturnValueOnce(makeSelectChain(makeCountResult(5))) // movies_watched
         .mockReturnValueOnce(makeSelectChain(makeCountResult(10))) // movies_in_watchlist
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(3)))  // shows_tracking
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(2)))  // shows_completed
+        .mockReturnValueOnce(makeSelectChain(makeCountResult(3))) // shows_tracking
+        .mockReturnValueOnce(makeSelectChain(makeCountResult(2))) // shows_completed
         .mockReturnValueOnce(makeSelectChain(makeCountResult(42))); // episodes_watched
 
       const res = await request.get('/api/profile/stats');

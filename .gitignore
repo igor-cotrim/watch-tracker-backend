@@ -3,4 +3,5 @@ dist/
 .env
 *.js
 !dist/**/*.js
+!eslint.config.js
 coverage/

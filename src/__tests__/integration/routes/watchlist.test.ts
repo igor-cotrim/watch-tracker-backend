@@ -275,7 +275,12 @@ describe('Watchlist routes', () => {
           id: 100,
           title: undefined,
           name: 'Daredevil: Born Again',
-          next_episode_to_air: makeNextEpisode({ air_date: '2099-04-08', season_number: 2, episode_number: 5, name: 'The Grand Design' }),
+          next_episode_to_air: makeNextEpisode({
+            air_date: '2099-04-08',
+            season_number: 2,
+            episode_number: 5,
+            name: 'The Grand Design',
+          }),
         }),
       );
 
@@ -313,10 +318,20 @@ describe('Watchlist routes', () => {
 
       mockTmdb.getMediaDetails
         .mockResolvedValueOnce(
-          makeTMDBMedia({ id: 1, title: undefined, name: 'Show Later', next_episode_to_air: makeNextEpisode({ air_date: '2099-06-01' }) }),
+          makeTMDBMedia({
+            id: 1,
+            title: undefined,
+            name: 'Show Later',
+            next_episode_to_air: makeNextEpisode({ air_date: '2099-06-01' }),
+          }),
         )
         .mockResolvedValueOnce(
-          makeTMDBMedia({ id: 2, title: undefined, name: 'Show Sooner', next_episode_to_air: makeNextEpisode({ air_date: '2099-04-01' }) }),
+          makeTMDBMedia({
+            id: 2,
+            title: undefined,
+            name: 'Show Sooner',
+            next_episode_to_air: makeNextEpisode({ air_date: '2099-04-01' }),
+          }),
         );
 
       const res = await request.get('/api/watchlist/upcoming');
@@ -342,11 +357,14 @@ describe('Watchlist routes', () => {
       const show2 = makeWatchlistItem({ mediaType: 'tv', tmdbId: 2 });
       mockDb.select.mockReturnValue(makeSelectChain([show1, show2]));
 
-      mockTmdb.getMediaDetails
-        .mockRejectedValueOnce(new Error('TMDB error'))
-        .mockResolvedValueOnce(
-          makeTMDBMedia({ id: 2, title: undefined, name: 'Good Show', next_episode_to_air: makeNextEpisode() }),
-        );
+      mockTmdb.getMediaDetails.mockRejectedValueOnce(new Error('TMDB error')).mockResolvedValueOnce(
+        makeTMDBMedia({
+          id: 2,
+          title: undefined,
+          name: 'Good Show',
+          next_episode_to_air: makeNextEpisode(),
+        }),
+      );
 
       const res = await request.get('/api/watchlist/upcoming');
       expect(res.status).toBe(200);

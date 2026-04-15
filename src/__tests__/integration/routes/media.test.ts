@@ -339,8 +339,9 @@ describe('Media routes', () => {
       const res = await request.post('/api/media/tv/1396/watch-all');
       expect(res.status).toBe(201);
       expect(res.body.markedCount).toBe(1);
-      const insertedValues = mockDb.insert.mock.results[0].value.values.mock
-        .calls[0][0] as Array<{ episodeNumber: number }>;
+      const insertedValues = mockDb.insert.mock.results[0].value.values.mock.calls[0][0] as Array<{
+        episodeNumber: number;
+      }>;
       expect(insertedValues.every((v: { episodeNumber: number }) => v.episodeNumber !== 1)).toBe(
         true,
       );

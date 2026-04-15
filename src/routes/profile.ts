@@ -28,9 +28,7 @@ router.get('/stats', async (req, res, next) => {
         db
           .select({ value: count() })
           .from(userWatchlist)
-          .where(
-            and(eq(userWatchlist.userId, userId), eq(userWatchlist.mediaType, 'movie')),
-          ),
+          .where(and(eq(userWatchlist.userId, userId), eq(userWatchlist.mediaType, 'movie'))),
         db
           .select({ value: count() })
           .from(userWatchlist)

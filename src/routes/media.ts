@@ -24,7 +24,10 @@ async function tryGetUserId(req: Request): Promise<string | null> {
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.substring(7);
   try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
     if (error || !user) return null;
     return user.id;
   } catch {
@@ -286,7 +289,10 @@ router.post('/tv/:id/seasons/:seasonNumber/watch', authMiddleware, async (req, r
     }
 
     const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
-    res.status(201).json({ message: `Marked ${toInsert.length} episodes as watched`, statusChanged: statusChanged ?? null });
+    res.status(201).json({
+      message: `Marked ${toInsert.length} episodes as watched`,
+      statusChanged: statusChanged ?? null,
+    });
   } catch (error) {
     next(error);
   }
