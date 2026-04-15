@@ -5,6 +5,7 @@ vi.mock('../../../db/index.js', () => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     execute: vi.fn(),
   },
@@ -207,6 +208,164 @@ describe('Media routes', () => {
       const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
       expect(res.status).toBe(409);
     });
+
+    it('returns statusChanged=null when show has dropped status', async () => {
+      const episode = {
+        id: 1,
+        userId: 'user-uuid',
+        tmdbId: 1396,
+        seasonNumber: 1,
+        episodeNumber: 1,
+      };
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([episode]),
+      });
+      // checkAndUpdateTVStatus: entry with status 'dropped' → early return null
+      mockDb.select.mockReturnValueOnce(
+        makeSelectChain([
+          {
+            id: 1,
+            userId: 'user-uuid',
+            tmdbId: 1396,
+            mediaType: 'tv',
+            status: 'dropped',
+          },
+        ]),
+      );
+
+      const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(201);
+      expect(res.body.statusChanged).toBeNull();
+    });
+
+    it('returns statusChanged=null when show is already completed', async () => {
+      const episode = {
+        id: 1,
+        userId: 'user-uuid',
+        tmdbId: 1396,
+        seasonNumber: 1,
+        episodeNumber: 1,
+      };
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([episode]),
+      });
+      // checkAndUpdateTVStatus: entry with status 'completed' → early return null
+      mockDb.select.mockReturnValueOnce(
+        makeSelectChain([
+          {
+            id: 1,
+            userId: 'user-uuid',
+            tmdbId: 1396,
+            mediaType: 'tv',
+            status: 'completed',
+          },
+        ]),
+      );
+
+      const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(201);
+      expect(res.body.statusChanged).toBeNull();
+    });
+
+    it('returns statusChanged=null when no episodes have aired yet', async () => {
+      const episode = {
+        id: 1,
+        userId: 'user-uuid',
+        tmdbId: 1396,
+        seasonNumber: 1,
+        episodeNumber: 1,
+      };
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([episode]),
+      });
+      mockDb.select.mockReturnValueOnce(
+        makeSelectChain([
+          { id: 1, userId: 'user-uuid', tmdbId: 1396, mediaType: 'tv', status: 'watching' },
+        ]),
+      );
+      mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: 1396, number_of_seasons: 1 }));
+      // All episodes have a future air_date — none have aired yet
+      mockTmdb.getSeasonDetails.mockResolvedValue(
+        makeTMDBSeasonDetails({
+          episodes: [
+            {
+              id: 101,
+              name: 'Upcoming',
+              episode_number: 1,
+              season_number: 1,
+              overview: '',
+              still_path: null,
+              air_date: '2099-01-01',
+              runtime: 45,
+              vote_average: 0,
+            },
+          ],
+        }),
+      );
+
+      const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(201);
+      expect(res.body.statusChanged).toBeNull();
+    });
+
+    it('returns statusChanged=completed when all episodes watched after marking', async () => {
+      const episode = {
+        id: 1,
+        userId: 'user-uuid',
+        tmdbId: 1396,
+        seasonNumber: 1,
+        episodeNumber: 1,
+      };
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([episode]),
+      });
+
+      // checkAndUpdateTVStatus: watchlist entry (watching), then watched episodes for season 1
+      mockDb.select
+        .mockReturnValueOnce(
+          makeSelectChain([
+            {
+              id: 1,
+              userId: 'user-uuid',
+              tmdbId: 1396,
+              mediaType: 'tv',
+              status: 'watching',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(makeSelectChain([{ episodeNumber: 1 }]));
+
+      mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: 1396, number_of_seasons: 1 }));
+      mockTmdb.getSeasonDetails.mockResolvedValue(
+        makeTMDBSeasonDetails({
+          episodes: [
+            {
+              id: 101,
+              name: 'Pilot',
+              episode_number: 1,
+              season_number: 1,
+              overview: '',
+              still_path: null,
+              air_date: '2024-01-01',
+              runtime: 45,
+              vote_average: 8.0,
+            },
+          ],
+        }),
+      );
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([]),
+      });
+
+      const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(201);
+      expect(res.body.statusChanged).toBe('completed');
+    });
   });
 
   describe('DELETE /api/media/tv/:id/episodes/:seasonNumber/:episodeNumber/watch', () => {
@@ -217,6 +376,41 @@ describe('Media routes', () => {
       const res = await request.delete('/api/media/tv/1396/episodes/1/1/watch');
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('Episode unmarked as watched');
+    });
+
+    it('returns statusChanged=watching when show was completed before unmarking', async () => {
+      const mockDeleteChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.delete.mockReturnValue(mockDeleteChain);
+
+      // revertCompletedToWatching: entry with status 'completed'
+      mockDb.select.mockReturnValueOnce(
+        makeSelectChain([
+          {
+            id: 1,
+            userId: 'user-uuid',
+            tmdbId: 1396,
+            mediaType: 'tv',
+            status: 'completed',
+          },
+        ]),
+      );
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([]),
+      });
+
+      const res = await request.delete('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(200);
+      expect(res.body.statusChanged).toBe('watching');
+    });
+
+    it('returns 500 when db.delete throws', async () => {
+      mockDb.delete.mockReturnValue({
+        where: vi.fn().mockRejectedValue(new Error('DB error')),
+      });
+
+      const res = await request.delete('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(500);
     });
 
     it('returns 400 for non-numeric params', async () => {

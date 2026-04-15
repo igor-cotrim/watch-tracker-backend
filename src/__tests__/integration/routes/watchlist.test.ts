@@ -5,6 +5,7 @@ vi.mock('../../../db/index.js', () => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     execute: vi.fn(),
   },
@@ -255,6 +256,43 @@ describe('Watchlist routes', () => {
       expect(res.body[0].nextEpisode.episodeNumber).toBe(1);
     });
 
+    it('returns next episode in same season when some episodes are watched', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv', tmdbId: 1396 });
+      mockDb.select
+        .mockReturnValueOnce(makeSelectChain([tvShow]))
+        .mockReturnValueOnce(makeSelectChain([{ seasonNumber: 1, episodeNumber: 1 }]));
+
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({ id: 1396, name: 'Breaking Bad', number_of_seasons: 5 }),
+      );
+      mockTmdb.getSeasonDetails.mockResolvedValue(makeTMDBSeasonDetails());
+
+      const res = await request.get('/api/watchlist/continue-watching');
+      expect(res.status).toBe(200);
+      expect(res.body[0].nextEpisode.episodeNumber).toBe(2);
+      expect(res.body[0].nextEpisode.seasonNumber).toBe(1);
+    });
+
+    it('advances to next season when all episodes in current season are watched', async () => {
+      const tvShow = makeWatchlistItem({ mediaType: 'tv', tmdbId: 1396 });
+      // Episode 2 is the last in season 1 (makeTMDBSeasonDetails has eps 1 and 2)
+      mockDb.select
+        .mockReturnValueOnce(makeSelectChain([tvShow]))
+        .mockReturnValueOnce(makeSelectChain([{ seasonNumber: 1, episodeNumber: 2 }]));
+
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({ id: 1396, name: 'Breaking Bad', number_of_seasons: 2 }),
+      );
+      mockTmdb.getSeasonDetails
+        .mockResolvedValueOnce(makeTMDBSeasonDetails({ season_number: 1 })) // current season
+        .mockResolvedValueOnce(makeTMDBSeasonDetails({ season_number: 2 })); // next season
+
+      const res = await request.get('/api/watchlist/continue-watching');
+      expect(res.status).toBe(200);
+      expect(res.body[0].nextEpisode.seasonNumber).toBe(2);
+      expect(res.body[0].nextEpisode.episodeNumber).toBe(1);
+    });
+
     it('excludes shows where TMDB call fails', async () => {
       const tvShow = makeWatchlistItem({ mediaType: 'tv', tmdbId: 9999 });
       mockDb.select.mockReturnValue(makeSelectChain([tvShow]));
@@ -407,6 +445,39 @@ describe('Watchlist routes', () => {
       const res = await request.get('/api/watchlist/upcoming');
       expect(res.status).toBe(200);
       expect(res.body[0].watchProviders).toEqual([]);
+    });
+  });
+
+  describe('PATCH /api/watchlist/:id/status', () => {
+    it('returns 400 for non-numeric id', async () => {
+      const res = await request.patch('/api/watchlist/abc/status').send({ status: 'watching' });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for invalid status value', async () => {
+      const res = await request.patch('/api/watchlist/1/status').send({ status: 'invalid' });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 when item not found', async () => {
+      mockDb.select.mockReturnValue(makeSelectChain([]));
+      const res = await request.patch('/api/watchlist/999/status').send({ status: 'completed' });
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 200 with updated item', async () => {
+      const item = makeWatchlistItem({ id: 1, status: 'watching' });
+      const updated = { ...item, status: 'completed' };
+      mockDb.select.mockReturnValue(makeSelectChain([item]));
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([updated]),
+      });
+
+      const res = await request.patch('/api/watchlist/1/status').send({ status: 'completed' });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('completed');
     });
   });
 
