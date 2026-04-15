@@ -24,13 +24,16 @@
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "drizzle-orm": "^0.44.1",
+    "drizzle-orm": "^0.45.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.3.2",
     "helmet": "^8.1.0",
     "morgan": "^1.10.1",
     "postgres": "^3.4.5",
     "zod": "^3.24.4"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -41,7 +44,7 @@
     "@types/node": "^25.5.2",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.4",
-    "drizzle-kit": "^0.31.1",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
