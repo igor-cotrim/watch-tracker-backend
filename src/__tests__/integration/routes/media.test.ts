@@ -49,7 +49,11 @@ vi.mock('../../../middleware/auth.js', async (importOriginal) => {
 
 import { db, isUniqueConstraintError } from '../../../db/index.js';
 import { tmdbService } from '../../../services/tmdb.js';
-import { makeTMDBMedia, makeTMDBSeasonDetails, makeNextEpisode } from '../../helpers/mockFactory.js';
+import {
+  makeTMDBMedia,
+  makeTMDBSeasonDetails,
+  makeNextEpisode,
+} from '../../helpers/mockFactory.js';
 
 const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const mockTmdb = tmdbService as unknown as Record<string, ReturnType<typeof vi.fn>>;
