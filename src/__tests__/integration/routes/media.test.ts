@@ -49,7 +49,7 @@ vi.mock('../../../middleware/auth.js', async (importOriginal) => {
 
 import { db, isUniqueConstraintError } from '../../../db/index.js';
 import { tmdbService } from '../../../services/tmdb.js';
-import { makeTMDBMedia, makeTMDBSeasonDetails } from '../../helpers/mockFactory.js';
+import { makeTMDBMedia, makeTMDBSeasonDetails, makeNextEpisode } from '../../helpers/mockFactory.js';
 
 const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const mockTmdb = tmdbService as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -365,6 +365,63 @@ describe('Media routes', () => {
       const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
       expect(res.status).toBe(201);
       expect(res.body.statusChanged).toBe('completed');
+    });
+
+    it('returns statusChanged=null when all aired episodes watched but future episodes exist', async () => {
+      const episode = {
+        id: 1,
+        userId: 'user-uuid',
+        tmdbId: 1396,
+        seasonNumber: 1,
+        episodeNumber: 1,
+      };
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([episode]),
+      });
+
+      mockDb.select
+        .mockReturnValueOnce(
+          makeSelectChain([
+            {
+              id: 1,
+              userId: 'user-uuid',
+              tmdbId: 1396,
+              mediaType: 'tv',
+              status: 'watching',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(makeSelectChain([{ episodeNumber: 1 }]));
+
+      mockTmdb.getMediaDetails.mockResolvedValue(
+        makeTMDBMedia({
+          id: 1396,
+          number_of_seasons: 1,
+          next_episode_to_air: makeNextEpisode(),
+        }),
+      );
+      mockTmdb.getSeasonDetails.mockResolvedValue(
+        makeTMDBSeasonDetails({
+          episodes: [
+            {
+              id: 101,
+              name: 'Pilot',
+              episode_number: 1,
+              season_number: 1,
+              overview: '',
+              still_path: null,
+              air_date: '2024-01-01',
+              runtime: 45,
+              vote_average: 8.0,
+            },
+          ],
+        }),
+      );
+
+      const res = await request.post('/api/media/tv/1396/episodes/1/1/watch');
+      expect(res.status).toBe(201);
+      expect(res.body.statusChanged).toBeNull();
     });
   });
 

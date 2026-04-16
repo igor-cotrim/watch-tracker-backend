@@ -40,6 +40,9 @@ export async function checkAndUpdateTVStatus(
 
     if (numberOfSeasons === 0) return null;
 
+    // If TMDB signals there are future episodes scheduled, never mark as completed
+    if (show.next_episode_to_air) return null;
+
     const today = new Date();
     today.setHours(23, 59, 59, 999); // end of today
 
