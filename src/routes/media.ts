@@ -7,7 +7,11 @@ import { authMiddleware, getAuthUser } from '../middleware/auth.js';
 import { createClient } from '@supabase/supabase-js';
 import { env } from '../config/env.js';
 import { tmdbService } from '../services/tmdb.js';
-import { checkAndUpdateTVStatus, revertCompletedToWatching } from '../services/watchStatus.js';
+import {
+  checkAndUpdateTVStatus,
+  ensureWatchingOnEpisodeMark,
+  revertCompletedToWatching,
+} from '../services/watchStatus.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
@@ -174,7 +178,9 @@ router.post(
           .values({ userId, tmdbId: tvId, seasonNumber, episodeNumber })
           .returning();
 
-        const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
+        const ensuredStatus = await ensureWatchingOnEpisodeMark(userId, tvId);
+        const completedStatus = await checkAndUpdateTVStatus(userId, tvId);
+        const statusChanged = completedStatus ?? ensuredStatus;
         res.status(201).json({ ...episode, statusChanged: statusChanged ?? null });
       } catch (dbError) {
         if (isUniqueConstraintError(dbError)) {
@@ -288,7 +294,9 @@ router.post('/tv/:id/seasons/:seasonNumber/watch', authMiddleware, async (req, r
       await db.insert(userEpisodesWatched).values(toInsert);
     }
 
-    const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
+    const ensuredStatus = await ensureWatchingOnEpisodeMark(userId, tvId);
+    const completedStatus = await checkAndUpdateTVStatus(userId, tvId);
+    const statusChanged = completedStatus ?? ensuredStatus;
     res.status(201).json({
       message: `Marked ${toInsert.length} episodes as watched`,
       statusChanged: statusChanged ?? null,
@@ -378,7 +386,9 @@ router.post('/tv/:id/watch-all', authMiddleware, async (req, res, next) => {
     );
 
     const markedCount = counts.reduce((a, b) => a + b, 0);
-    const statusChanged = await checkAndUpdateTVStatus(userId, tvId);
+    const ensuredStatus = await ensureWatchingOnEpisodeMark(userId, tvId);
+    const completedStatus = await checkAndUpdateTVStatus(userId, tvId);
+    const statusChanged = completedStatus ?? ensuredStatus;
     res.status(201).json({ markedCount, statusChanged: statusChanged ?? null });
   } catch (error) {
     next(error);

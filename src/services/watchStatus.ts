@@ -107,6 +107,58 @@ export async function checkAndUpdateTVStatus(
 }
 
 /**
+ * When a user marks an episode watched, ensure the show is on the watchlist
+ * with an active status. Auto-adds the show as 'watching' if missing, and
+ * promotes 'plan_to_watch' → 'watching'. Leaves 'watching', 'completed', and
+ * 'dropped' untouched. Returns the new status or null if unchanged.
+ */
+export async function ensureWatchingOnEpisodeMark(
+  userId: string,
+  tmdbId: number,
+): Promise<WatchStatus | null> {
+  try {
+    const [entry] = await db
+      .select()
+      .from(userWatchlist)
+      .where(
+        and(
+          eq(userWatchlist.userId, userId),
+          eq(userWatchlist.tmdbId, tmdbId),
+          eq(userWatchlist.mediaType, 'tv'),
+        ),
+      );
+
+    if (!entry) {
+      await db.insert(userWatchlist).values({
+        userId,
+        tmdbId,
+        mediaType: 'tv',
+        status: 'watching',
+      });
+      return 'watching';
+    }
+
+    if (entry.status !== 'plan_to_watch') return null;
+
+    await db
+      .update(userWatchlist)
+      .set({ status: 'watching' })
+      .where(
+        and(
+          eq(userWatchlist.userId, userId),
+          eq(userWatchlist.tmdbId, tmdbId),
+          eq(userWatchlist.mediaType, 'tv'),
+        ),
+      );
+
+    return 'watching';
+  } catch (error) {
+    console.error('watchStatus: failed to ensure watching status', error);
+    return null;
+  }
+}
+
+/**
  * When a user unmarks an episode from a completed series, revert status to 'watching'.
  * Returns 'watching' if status was changed, null otherwise.
  */
