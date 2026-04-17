@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { tmdbService } from '../services/tmdb.js';
 import { REGION } from '../config/constants.js';
+import { languageMiddleware } from '../middleware/language.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
+
+router.use(languageMiddleware);
 
 // GET / — discover with filters
 router.get('/', async (req, res, next) => {
@@ -23,15 +26,18 @@ router.get('/', async (req, res, next) => {
       return;
     }
 
-    const results = await tmdbService.discover({
-      type: type as MediaType,
-      ...(with_watch_providers && { with_watch_providers: String(with_watch_providers) }),
-      ...(watch_region && { watch_region: String(watch_region) }),
-      ...(with_genres && { with_genres: String(with_genres) }),
-      ...(with_origin_country && { with_origin_country: String(with_origin_country) }),
-      ...(sort_by && { sort_by: String(sort_by) }),
-      ...(page && { page: parseInt(String(page), 10) }),
-    });
+    const results = await tmdbService.discover(
+      {
+        type: type as MediaType,
+        ...(with_watch_providers && { with_watch_providers: String(with_watch_providers) }),
+        ...(watch_region && { watch_region: String(watch_region) }),
+        ...(with_genres && { with_genres: String(with_genres) }),
+        ...(with_origin_country && { with_origin_country: String(with_origin_country) }),
+        ...(sort_by && { sort_by: String(sort_by) }),
+        ...(page && { page: parseInt(String(page), 10) }),
+      },
+      req.language,
+    );
 
     res.json(results.results);
   } catch (error) {
@@ -60,6 +66,7 @@ router.get('/trending', async (req, res, next) => {
     const results = await tmdbService.getTrending(
       String(type) as 'movie' | 'tv' | 'all',
       String(time_window) as 'day' | 'week',
+      req.language,
     );
 
     res.json(results.results);
@@ -80,6 +87,7 @@ router.get('/top-rated', async (req, res, next) => {
 
     const results = await tmdbService.getTopRated(
       type as MediaType,
+      req.language,
       page ? parseInt(String(page), 10) : undefined,
     );
     res.json(results.results);
@@ -92,7 +100,10 @@ router.get('/top-rated', async (req, res, next) => {
 router.get('/upcoming', async (req, res, next) => {
   try {
     const { page } = req.query;
-    const results = await tmdbService.getUpcoming(page ? parseInt(String(page), 10) : undefined);
+    const results = await tmdbService.getUpcoming(
+      req.language,
+      page ? parseInt(String(page), 10) : undefined,
+    );
     res.json(results.results);
   } catch (error) {
     next(error);
@@ -111,6 +122,7 @@ router.get('/popular', async (req, res, next) => {
 
     const results = await tmdbService.getPopular(
       type as MediaType,
+      req.language,
       page ? parseInt(String(page), 10) : undefined,
     );
     res.json(results.results);
@@ -129,7 +141,7 @@ router.get('/genres', async (req, res, next) => {
       return;
     }
 
-    const results = await tmdbService.getGenres(type as MediaType);
+    const results = await tmdbService.getGenres(type as MediaType, req.language);
     res.json(results.genres);
   } catch (error) {
     next(error);
@@ -146,7 +158,11 @@ router.get('/providers', async (req, res, next) => {
       return;
     }
 
-    const results = await tmdbService.getWatchProviders(type as MediaType, REGION.BRAZIL);
+    const results = await tmdbService.getWatchProviders(
+      type as MediaType,
+      req.language,
+      REGION.BRAZIL,
+    );
     res.json(results.results);
   } catch (error) {
     next(error);
@@ -165,7 +181,7 @@ router.get('/search', async (req, res, next) => {
 
     const mediaType = type === 'movie' || type === 'tv' ? type : undefined;
     const yearNum = year ? parseInt(String(year), 10) : undefined;
-    const results = await tmdbService.search(query, mediaType, yearNum);
+    const results = await tmdbService.search(query, req.language, mediaType, yearNum);
 
     res.json(results.results);
   } catch (error) {
@@ -176,7 +192,7 @@ router.get('/search', async (req, res, next) => {
 // GET /now-playing — now playing in BR cinemas
 router.get('/now-playing', async (req, res, next) => {
   try {
-    const results = await tmdbService.getNowPlaying();
+    const results = await tmdbService.getNowPlaying(req.language);
     res.json(results.results);
   } catch (error) {
     next(error);

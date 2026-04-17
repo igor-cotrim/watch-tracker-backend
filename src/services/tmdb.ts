@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { MediaType } from '../types/index.js';
+import type { Language, MediaType } from '../types/index.js';
 import { env } from '../config/env.js';
 
 const tmdbClient = axios.create({
@@ -142,10 +142,14 @@ export interface TMDBProviderList {
 }
 
 export const tmdbService = {
-  async getMediaDetails(id: number, type: MediaType): Promise<TMDBMediaDetails> {
+  async getMediaDetails(
+    id: number,
+    type: MediaType,
+    language: Language,
+  ): Promise<TMDBMediaDetails> {
     try {
       const { data } = await tmdbClient.get<TMDBMediaDetails>(`/${type}/${id}`, {
-        params: { append_to_response: 'credits,watch/providers' },
+        params: { language, append_to_response: 'credits,watch/providers' },
       });
       return data;
     } catch (error) {
@@ -156,21 +160,29 @@ export const tmdbService = {
   async getTrending(
     type: 'movie' | 'tv' | 'all',
     timeWindow: 'day' | 'week',
+    language: Language,
   ): Promise<TMDBSearchResult> {
     try {
-      const { data } = await tmdbClient.get<TMDBSearchResult>(`/trending/${type}/${timeWindow}`);
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/trending/${type}/${timeWindow}`, {
+        params: { language },
+      });
       return data;
     } catch (error) {
       handleTMDBError(error);
     }
   },
 
-  async search(query: string, type?: MediaType, year?: number): Promise<TMDBSearchResult> {
+  async search(
+    query: string,
+    language: Language,
+    type?: MediaType,
+    year?: number,
+  ): Promise<TMDBSearchResult> {
     try {
       const searchType = type ?? 'multi';
       const yearParam = type === 'tv' ? 'first_air_date_year' : 'year';
       const { data } = await tmdbClient.get<TMDBSearchResult>(`/search/${searchType}`, {
-        params: { query, ...(year && { [yearParam]: year }) },
+        params: { query, language, ...(year && { [yearParam]: year }) },
       });
       return data;
     } catch (error) {
@@ -178,11 +190,11 @@ export const tmdbService = {
     }
   },
 
-  async discover(params: DiscoverParams): Promise<TMDBSearchResult> {
+  async discover(params: DiscoverParams, language: Language): Promise<TMDBSearchResult> {
     try {
       const { type, ...filters } = params;
       const { data } = await tmdbClient.get<TMDBSearchResult>(`/discover/${type}`, {
-        params: filters,
+        params: { language, ...filters },
       });
       return data;
     } catch (error) {
@@ -190,10 +202,10 @@ export const tmdbService = {
     }
   },
 
-  async getNowPlaying(): Promise<TMDBSearchResult> {
+  async getNowPlaying(language: Language): Promise<TMDBSearchResult> {
     try {
       const { data } = await tmdbClient.get<TMDBSearchResult>('/movie/now_playing', {
-        params: { region: 'BR' },
+        params: { language, region: 'BR' },
       });
       return data;
     } catch (error) {
@@ -201,10 +213,15 @@ export const tmdbService = {
     }
   },
 
-  async getSeasonDetails(tvId: number, seasonNumber: number): Promise<TMDBSeasonDetails> {
+  async getSeasonDetails(
+    tvId: number,
+    seasonNumber: number,
+    language: Language,
+  ): Promise<TMDBSeasonDetails> {
     try {
       const { data } = await tmdbClient.get<TMDBSeasonDetails>(
         `/tv/${tvId}/season/${seasonNumber}`,
+        { params: { language } },
       );
       return data;
     } catch (error) {
@@ -212,10 +229,10 @@ export const tmdbService = {
     }
   },
 
-  async getTopRated(type: MediaType, page?: number): Promise<TMDBSearchResult> {
+  async getTopRated(type: MediaType, language: Language, page?: number): Promise<TMDBSearchResult> {
     try {
       const { data } = await tmdbClient.get<TMDBSearchResult>(`/${type}/top_rated`, {
-        params: { ...(page && { page }) },
+        params: { language, ...(page && { page }) },
       });
       return data;
     } catch (error) {
@@ -223,10 +240,10 @@ export const tmdbService = {
     }
   },
 
-  async getUpcoming(page?: number): Promise<TMDBSearchResult> {
+  async getUpcoming(language: Language, page?: number): Promise<TMDBSearchResult> {
     try {
       const { data } = await tmdbClient.get<TMDBSearchResult>('/movie/upcoming', {
-        params: { region: 'BR', ...(page && { page }) },
+        params: { language, region: 'BR', ...(page && { page }) },
       });
       return data;
     } catch (error) {
@@ -234,10 +251,10 @@ export const tmdbService = {
     }
   },
 
-  async getPopular(type: MediaType, page?: number): Promise<TMDBSearchResult> {
+  async getPopular(type: MediaType, language: Language, page?: number): Promise<TMDBSearchResult> {
     try {
       const { data } = await tmdbClient.get<TMDBSearchResult>(`/${type}/popular`, {
-        params: { ...(page && { page }) },
+        params: { language, ...(page && { page }) },
       });
       return data;
     } catch (error) {
@@ -245,19 +262,25 @@ export const tmdbService = {
     }
   },
 
-  async getGenres(type: MediaType): Promise<TMDBGenreList> {
+  async getGenres(type: MediaType, language: Language): Promise<TMDBGenreList> {
     try {
-      const { data } = await tmdbClient.get<TMDBGenreList>(`/genre/${type}/list`);
+      const { data } = await tmdbClient.get<TMDBGenreList>(`/genre/${type}/list`, {
+        params: { language },
+      });
       return data;
     } catch (error) {
       handleTMDBError(error);
     }
   },
 
-  async getWatchProviders(type: MediaType, region?: string): Promise<TMDBProviderList> {
+  async getWatchProviders(
+    type: MediaType,
+    language: Language,
+    region?: string,
+  ): Promise<TMDBProviderList> {
     try {
       const { data } = await tmdbClient.get<TMDBProviderList>(`/watch/providers/${type}`, {
-        params: { ...(region && { watch_region: region }) },
+        params: { language, ...(region && { watch_region: region }) },
       });
       return data;
     } catch (error) {

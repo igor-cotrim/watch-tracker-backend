@@ -2,7 +2,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { userWatchlist, userEpisodesWatched } from '../db/schema.js';
 import { tmdbService } from './tmdb.js';
-import type { WatchStatus } from '../types/index.js';
+import { DEFAULT_LANGUAGE, type WatchStatus } from '../types/index.js';
 
 /**
  * Checks if all aired episodes of a TV show have been watched and updates
@@ -35,7 +35,7 @@ export async function checkAndUpdateTVStatus(
     if (entry.status === 'completed') return null;
 
     // Fetch show details to get number of seasons
-    const show = await tmdbService.getMediaDetails(tmdbId, 'tv');
+    const show = await tmdbService.getMediaDetails(tmdbId, 'tv', DEFAULT_LANGUAGE);
     const numberOfSeasons = show.number_of_seasons ?? 0;
 
     if (numberOfSeasons === 0) return null;
@@ -49,7 +49,7 @@ export async function checkAndUpdateTVStatus(
     let totalAiredEpisodes = 0;
 
     for (let seasonNumber = 1; seasonNumber <= numberOfSeasons; seasonNumber++) {
-      const season = await tmdbService.getSeasonDetails(tmdbId, seasonNumber);
+      const season = await tmdbService.getSeasonDetails(tmdbId, seasonNumber, DEFAULT_LANGUAGE);
 
       // Filter only episodes that have aired (air_date <= today)
       const airedEpisodes = season.episodes.filter((ep) => {

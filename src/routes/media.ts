@@ -12,9 +12,12 @@ import {
   ensureWatchingOnEpisodeMark,
   revertCompletedToWatching,
 } from '../services/watchStatus.js';
+import { languageMiddleware } from '../middleware/language.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
+
+router.use(languageMiddleware);
 
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
@@ -55,7 +58,7 @@ router.get('/:type/:id', async (req, res, next) => {
       return;
     }
 
-    const raw = await tmdbService.getMediaDetails(mediaId, type as MediaType);
+    const raw = await tmdbService.getMediaDetails(mediaId, type as MediaType, req.language);
     // Rename "watch/providers" to "watch_providers" so iOS snake_case decoder maps it to watchProviders
     const { 'watch/providers': watchProviders, ...rest } = raw;
 
@@ -106,7 +109,7 @@ router.get('/tv/:id/season/:seasonNumber', async (req, res, next) => {
       return;
     }
 
-    const season = await tmdbService.getSeasonDetails(tvId, seasonNumber);
+    const season = await tmdbService.getSeasonDetails(tvId, seasonNumber, req.language);
     res.json(season);
   } catch (error) {
     next(error);
@@ -271,7 +274,7 @@ router.post('/tv/:id/seasons/:seasonNumber/watch', authMiddleware, async (req, r
       return;
     }
 
-    const season = await tmdbService.getSeasonDetails(tvId, seasonNumber);
+    const season = await tmdbService.getSeasonDetails(tvId, seasonNumber, req.language);
     const episodeNumbers = season.episodes.map((e) => e.episode_number);
 
     const existing = await db
@@ -346,7 +349,7 @@ router.post('/tv/:id/watch-all', authMiddleware, async (req, res, next) => {
       return;
     }
 
-    const show = await tmdbService.getMediaDetails(tvId, 'tv');
+    const show = await tmdbService.getMediaDetails(tvId, 'tv', req.language);
     const numberOfSeasons = show.number_of_seasons ?? 0;
 
     if (numberOfSeasons === 0) {
@@ -358,7 +361,7 @@ router.post('/tv/:id/watch-all', authMiddleware, async (req, res, next) => {
 
     const counts = await Promise.all(
       seasonNumbers.map(async (seasonNumber) => {
-        const season = await tmdbService.getSeasonDetails(tvId, seasonNumber);
+        const season = await tmdbService.getSeasonDetails(tvId, seasonNumber, req.language);
         const episodeNumbers = season.episodes.map((e) => e.episode_number);
 
         const existing = await db

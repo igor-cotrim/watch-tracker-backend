@@ -4,11 +4,14 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { db, isUniqueConstraintError } from '../db/index.js';
 import { userWatchlist, userEpisodesWatched } from '../db/schema.js';
 import { authMiddleware, getAuthUser } from '../middleware/auth.js';
+import { languageMiddleware } from '../middleware/language.js';
 import { tmdbService } from '../services/tmdb.js';
 import { GENRE_ID } from '../config/constants.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
+
+router.use(languageMiddleware);
 
 const addToWatchlistSchema = z.object({
   tmdb_id: z.number().int().positive(),
@@ -47,6 +50,7 @@ router.get('/', async (req, res, next) => {
           const details = await tmdbService.getMediaDetails(
             item.tmdbId,
             item.mediaType as MediaType,
+            req.language,
           );
           const isAnime =
             item.mediaType === 'tv' &&
@@ -122,7 +126,7 @@ router.get('/continue-watching', async (req, res, next) => {
     const results = await Promise.allSettled(
       watchingShows.map(async (show) => {
         const [details, watchedEpisodes] = await Promise.all([
-          tmdbService.getMediaDetails(show.tmdbId, 'tv'),
+          tmdbService.getMediaDetails(show.tmdbId, 'tv', req.language),
           db
             .select()
             .from(userEpisodesWatched)
@@ -150,7 +154,7 @@ router.get('/continue-watching', async (req, res, next) => {
         } | null = null;
 
         if (watchedEpisodes.length === 0) {
-          const season1 = await tmdbService.getSeasonDetails(show.tmdbId, 1);
+          const season1 = await tmdbService.getSeasonDetails(show.tmdbId, 1, req.language);
           const ep1 = season1.episodes[0];
           if (ep1) {
             nextEpisode = {
@@ -169,7 +173,11 @@ router.get('/continue-watching', async (req, res, next) => {
             return max;
           });
 
-          const currentSeason = await tmdbService.getSeasonDetails(show.tmdbId, last.seasonNumber);
+          const currentSeason = await tmdbService.getSeasonDetails(
+            show.tmdbId,
+            last.seasonNumber,
+            req.language,
+          );
           const nextInSeason = currentSeason.episodes.find(
             (ep) => ep.episode_number === last.episodeNumber + 1,
           );
@@ -186,6 +194,7 @@ router.get('/continue-watching', async (req, res, next) => {
             const nextSeason = await tmdbService.getSeasonDetails(
               show.tmdbId,
               last.seasonNumber + 1,
+              req.language,
             );
             const firstEp = nextSeason.episodes[0];
             if (firstEp) {
@@ -245,7 +254,7 @@ router.get('/upcoming', async (req, res, next) => {
 
     const results = await Promise.allSettled(
       tvShows.map(async (show) => {
-        const details = await tmdbService.getMediaDetails(show.tmdbId, 'tv');
+        const details = await tmdbService.getMediaDetails(show.tmdbId, 'tv', req.language);
 
         if (!details.next_episode_to_air) return null;
 
