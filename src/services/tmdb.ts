@@ -163,10 +163,11 @@ export const tmdbService = {
     type: 'movie' | 'tv' | 'all',
     timeWindow: 'day' | 'week',
     language: Language,
+    page?: number,
   ): Promise<TMDBSearchResult> {
     try {
       const { data } = await tmdbClient.get<TMDBSearchResult>(`/trending/${type}/${timeWindow}`, {
-        params: { language },
+        params: { language, ...(page && { page }) },
       });
       return data;
     } catch (error) {
@@ -204,10 +205,10 @@ export const tmdbService = {
     }
   },
 
-  async getNowPlaying(language: Language): Promise<TMDBSearchResult> {
+  async getNowPlaying(language: Language, page?: number): Promise<TMDBSearchResult> {
     try {
       const { data } = await tmdbClient.get<TMDBSearchResult>('/movie/now_playing', {
-        params: { language, region: 'BR' },
+        params: { language, region: 'BR', ...(page && { page }) },
       });
       return data;
     } catch (error) {

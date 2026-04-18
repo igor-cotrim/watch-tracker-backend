@@ -99,21 +99,28 @@ describe('Discover routes', () => {
       mockTmdb.getTrending.mockResolvedValue(makeTMDBSearchResult());
 
       await request.get('/api/discover/trending');
-      expect(mockTmdb.getTrending).toHaveBeenCalledWith('all', 'week', 'en-US');
+      expect(mockTmdb.getTrending).toHaveBeenCalledWith('all', 'week', 'en-US', undefined);
     });
 
     it('accepts type=movie', async () => {
       mockTmdb.getTrending.mockResolvedValue(makeTMDBSearchResult());
 
       await request.get('/api/discover/trending?type=movie');
-      expect(mockTmdb.getTrending).toHaveBeenCalledWith('movie', 'week', 'en-US');
+      expect(mockTmdb.getTrending).toHaveBeenCalledWith('movie', 'week', 'en-US', undefined);
     });
 
     it('accepts time_window=day', async () => {
       mockTmdb.getTrending.mockResolvedValue(makeTMDBSearchResult());
 
       await request.get('/api/discover/trending?time_window=day');
-      expect(mockTmdb.getTrending).toHaveBeenCalledWith('all', 'day', 'en-US');
+      expect(mockTmdb.getTrending).toHaveBeenCalledWith('all', 'day', 'en-US', undefined);
+    });
+
+    it('passes page param', async () => {
+      mockTmdb.getTrending.mockResolvedValue(makeTMDBSearchResult());
+
+      await request.get('/api/discover/trending?page=2');
+      expect(mockTmdb.getTrending).toHaveBeenCalledWith('all', 'week', 'en-US', 2);
     });
 
     it('returns 400 for invalid type', async () => {

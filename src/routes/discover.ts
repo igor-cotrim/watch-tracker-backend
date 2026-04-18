@@ -52,7 +52,7 @@ router.get('/', async (req, res, next) => {
 // GET /trending — trending media
 router.get('/trending', async (req, res, next) => {
   try {
-    const { type = 'all', time_window = 'week' } = req.query;
+    const { type = 'all', time_window = 'week', page } = req.query;
 
     const validTypes = ['movie', 'tv', 'all'];
     const validWindows = ['day', 'week'];
@@ -71,6 +71,7 @@ router.get('/trending', async (req, res, next) => {
       String(type) as 'movie' | 'tv' | 'all',
       String(time_window) as 'day' | 'week',
       req.language,
+      page ? parseInt(String(page), 10) : undefined,
     );
 
     res.json(results.results);
@@ -196,7 +197,11 @@ router.get('/search', async (req, res, next) => {
 // GET /now-playing — now playing in BR cinemas
 router.get('/now-playing', async (req, res, next) => {
   try {
-    const results = await tmdbService.getNowPlaying(req.language);
+    const { page } = req.query;
+    const results = await tmdbService.getNowPlaying(
+      req.language,
+      page ? parseInt(String(page), 10) : undefined,
+    );
     res.json(results.results);
   } catch (error) {
     next(error);
