@@ -20,6 +20,8 @@ router.get('/', async (req, res, next) => {
       sort_by,
       page,
     } = req.query;
+    const primaryReleaseDateGte = req.query['primary_release_date.gte'];
+    const firstAirDateGte = req.query['first_air_date.gte'];
 
     if (type !== 'movie' && type !== 'tv') {
       res.status(400).json({ error: 'Type must be "movie" or "tv"' });
@@ -35,6 +37,8 @@ router.get('/', async (req, res, next) => {
         ...(with_origin_country && { with_origin_country: String(with_origin_country) }),
         ...(sort_by && { sort_by: String(sort_by) }),
         ...(page && { page: parseInt(String(page), 10) }),
+        ...(primaryReleaseDateGte && { 'primary_release_date.gte': String(primaryReleaseDateGte) }),
+        ...(firstAirDateGte && { 'first_air_date.gte': String(firstAirDateGte) }),
       },
       req.language,
     );

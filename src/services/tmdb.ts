@@ -126,6 +126,8 @@ export interface DiscoverParams {
   with_origin_country?: string;
   sort_by?: string;
   page?: number;
+  'primary_release_date.gte'?: string;
+  'first_air_date.gte'?: string;
 }
 
 export interface TMDBGenreList {
