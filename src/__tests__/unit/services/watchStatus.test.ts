@@ -56,7 +56,9 @@ describe('detectNewSeasonForCompleted', () => {
     const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
     mockDb.update.mockReturnValue({ set: updateSet });
 
-    mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: TMDB_ID, number_of_seasons: 2 }));
+    mockTmdb.getMediaDetails.mockResolvedValue(
+      makeTMDBMedia({ id: TMDB_ID, number_of_seasons: 2 }),
+    );
     mockTmdb.getSeasonDetails.mockResolvedValue(
       makeTMDBSeasonDetails({
         season_number: 2,
@@ -93,7 +95,9 @@ describe('detectNewSeasonForCompleted', () => {
       .mockReturnValueOnce(makeSelectChain([completedEntry]))
       .mockReturnValueOnce(makeSelectChain([{ seasonNumber: 1, episodeNumber: 1 }]));
 
-    mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: TMDB_ID, number_of_seasons: 2 }));
+    mockTmdb.getMediaDetails.mockResolvedValue(
+      makeTMDBMedia({ id: TMDB_ID, number_of_seasons: 2 }),
+    );
     mockTmdb.getSeasonDetails.mockResolvedValue(
       makeTMDBSeasonDetails({
         season_number: 2,
@@ -145,7 +149,9 @@ describe('detectNewSeasonForCompleted', () => {
       .mockReturnValueOnce(makeSelectChain([completedEntry]))
       .mockReturnValueOnce(makeSelectChain([{ seasonNumber: 2, episodeNumber: 1 }]));
 
-    mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: TMDB_ID, number_of_seasons: 2 }));
+    mockTmdb.getMediaDetails.mockResolvedValue(
+      makeTMDBMedia({ id: TMDB_ID, number_of_seasons: 2 }),
+    );
 
     const result = await detectNewSeasonForCompleted(USER, TMDB_ID);
 

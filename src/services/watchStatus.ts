@@ -232,9 +232,7 @@ export async function detectNewSeasonForCompleted(
     const watched = await db
       .select()
       .from(userEpisodesWatched)
-      .where(
-        and(eq(userEpisodesWatched.userId, userId), eq(userEpisodesWatched.tmdbId, tmdbId)),
-      );
+      .where(and(eq(userEpisodesWatched.userId, userId), eq(userEpisodesWatched.tmdbId, tmdbId)));
 
     if (watched.length === 0) return null;
     const maxWatchedSeason = watched.reduce((max, ep) => Math.max(max, ep.seasonNumber), 0);

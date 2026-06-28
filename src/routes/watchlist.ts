@@ -80,7 +80,13 @@ router.get('/', async (req, res, next) => {
             newSeasonNumber,
           };
         } catch {
-          return { ...item, title: 'Unknown', posterPath: null, isAnime: false, newSeasonNumber: null };
+          return {
+            ...item,
+            title: 'Unknown',
+            posterPath: null,
+            isAnime: false,
+            newSeasonNumber: null,
+          };
         }
       }),
     );
