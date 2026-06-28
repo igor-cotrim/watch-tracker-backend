@@ -2,7 +2,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { userWatchlist, userEpisodesWatched } from '../db/schema.js';
 import { tmdbService } from './tmdb.js';
-import { DEFAULT_LANGUAGE, type WatchStatus } from '../types/index.js';
+import { DEFAULT_LANGUAGE, type Language, type WatchStatus } from '../types/index.js';
 
 /**
  * Checks if all aired episodes of a TV show have been watched and updates
@@ -194,6 +194,87 @@ export async function revertCompletedToWatching(
     return 'watching';
   } catch (error) {
     console.error('watchStatus: failed to revert completed status', error);
+    return null;
+  }
+}
+
+/**
+ * Detects whether a TV show the user marked 'completed' now has a brand-new
+ * season with aired episodes (a season newer than the highest one the user has
+ * watched). If so, reverts the watchlist status to 'watching' and returns the
+ * new season number; otherwise returns null.
+ *
+ * The "what they finished" baseline is derived from user_episodes_watched, so
+ * shows completed without any tracked episodes are skipped (no baseline). Only
+ * seasons with at least one aired episode count — unaired future seasons and
+ * specials (season 0) are ignored.
+ */
+export async function detectNewSeasonForCompleted(
+  userId: string,
+  tmdbId: number,
+  language: Language = DEFAULT_LANGUAGE,
+): Promise<number | null> {
+  try {
+    const [entry] = await db
+      .select()
+      .from(userWatchlist)
+      .where(
+        and(
+          eq(userWatchlist.userId, userId),
+          eq(userWatchlist.tmdbId, tmdbId),
+          eq(userWatchlist.mediaType, 'tv'),
+        ),
+      );
+
+    if (!entry || entry.status !== 'completed') return null;
+
+    // Baseline: the highest season the user has watched episodes from.
+    const watched = await db
+      .select()
+      .from(userEpisodesWatched)
+      .where(
+        and(eq(userEpisodesWatched.userId, userId), eq(userEpisodesWatched.tmdbId, tmdbId)),
+      );
+
+    if (watched.length === 0) return null;
+    const maxWatchedSeason = watched.reduce((max, ep) => Math.max(max, ep.seasonNumber), 0);
+
+    const show = await tmdbService.getMediaDetails(tmdbId, 'tv', language);
+    const numberOfSeasons = show.number_of_seasons ?? 0;
+
+    // Cheap short-circuit: no season beyond what the user watched exists yet.
+    if (numberOfSeasons <= maxWatchedSeason) return null;
+
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // end of today
+
+    for (let seasonNumber = maxWatchedSeason + 1; seasonNumber <= numberOfSeasons; seasonNumber++) {
+      const season = await tmdbService.getSeasonDetails(tmdbId, seasonNumber, language);
+
+      const hasAiredEpisode = season.episodes.some((ep) => {
+        if (!ep.air_date) return false;
+        return new Date(ep.air_date) <= today;
+      });
+
+      if (hasAiredEpisode) {
+        await db
+          .update(userWatchlist)
+          .set({ status: 'watching' })
+          .where(
+            and(
+              eq(userWatchlist.userId, userId),
+              eq(userWatchlist.tmdbId, tmdbId),
+              eq(userWatchlist.mediaType, 'tv'),
+            ),
+          );
+
+        return seasonNumber;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('watchStatus: failed to detect new season', error);
     return null;
   }
 }

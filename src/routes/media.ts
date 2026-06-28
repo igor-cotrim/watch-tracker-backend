@@ -11,6 +11,7 @@ import {
   checkAndUpdateTVStatus,
   ensureWatchingOnEpisodeMark,
   revertCompletedToWatching,
+  detectNewSeasonForCompleted,
 } from '../services/watchStatus.js';
 import { languageMiddleware } from '../middleware/language.js';
 import type { MediaType } from '../types/index.js';
@@ -81,11 +82,14 @@ router.get('/:type/:id', async (req, res, next) => {
         if (entry) {
           watchlistStatus = entry.status;
 
-          // If show was completed but has a next episode to air, check for unwatched aired episodes
-          if (entry.status === 'completed' && raw.next_episode_to_air) {
-            const statusChanged = await revertCompletedToWatching(userId, mediaId);
-            if (statusChanged) {
-              watchlistStatus = statusChanged;
+          // If the show was completed but a brand-new season has since aired,
+          // revive it to 'watching'. Uses the watched-episode baseline so it
+          // still triggers after a new season has fully finished airing
+          // (when next_episode_to_air is back to null).
+          if (entry.status === 'completed') {
+            const newSeason = await detectNewSeasonForCompleted(userId, mediaId, req.language);
+            if (newSeason) {
+              watchlistStatus = 'watching';
             }
           }
         }
