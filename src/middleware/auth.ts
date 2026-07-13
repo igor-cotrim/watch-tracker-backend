@@ -1,12 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { profiles } from '../db/schema.js';
-import { env } from '../config/env.js';
+import { supabaseAdmin } from '../config/supabase.js';
 import type { AuthenticatedRequest } from '../types/index.js';
-
-const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
 export async function authMiddleware(
   req: Request,
@@ -29,7 +26,7 @@ export async function authMiddleware(
     const {
       data: { user },
       error,
-    } = await supabase.auth.getUser(token);
+    } = await supabaseAdmin.auth.getUser(token);
 
     if (error || !user) {
       res.status(401).json({ error: 'Invalid or expired token' });
