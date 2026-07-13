@@ -58,7 +58,10 @@ describe('tmdbService', () => {
       await tmdbService.getMediaDetails(1396, 'tv', 'pt-BR');
 
       expect(mockAxiosGet).toHaveBeenCalledWith('/tv/1396', {
-        params: { language: 'pt-BR', append_to_response: 'credits,watch/providers,content_ratings' },
+        params: {
+          language: 'pt-BR',
+          append_to_response: 'credits,watch/providers,content_ratings',
+        },
       });
     });
 

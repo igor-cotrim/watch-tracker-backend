@@ -74,7 +74,8 @@ router.get('/:type/:id', async (req, res, next) => {
     let certification: string | null = null;
     if (type === 'movie') {
       const entry = releaseDates?.results.find((r) => r.iso_3166_1 === region);
-      certification = entry?.release_dates.find((d) => d.certification !== '')?.certification ?? null;
+      certification =
+        entry?.release_dates.find((d) => d.certification !== '')?.certification ?? null;
     } else {
       const entry = contentRatings?.results.find((r) => r.iso_3166_1 === region);
       certification = entry?.rating && entry.rating !== '' ? entry.rating : null;
