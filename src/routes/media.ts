@@ -60,8 +60,25 @@ router.get('/:type/:id', async (req, res, next) => {
     }
 
     const raw = await tmdbService.getMediaDetails(mediaId, type as MediaType, req.language);
-    // Rename "watch/providers" to "watch_providers" so iOS snake_case decoder maps it to watchProviders
-    const { 'watch/providers': watchProviders, ...rest } = raw;
+    // Rename "watch/providers" to "watch_providers" so iOS snake_case decoder maps it to watchProviders.
+    // Strip the raw ratings payloads — we surface only the resolved `certification` string.
+    const {
+      'watch/providers': watchProviders,
+      release_dates: releaseDates,
+      content_ratings: contentRatings,
+      ...rest
+    } = raw;
+
+    // Resolve the content rating for the request locale's region (pt-BR → BR, en-US → US).
+    const region = req.language.split('-')[1];
+    let certification: string | null = null;
+    if (type === 'movie') {
+      const entry = releaseDates?.results.find((r) => r.iso_3166_1 === region);
+      certification = entry?.release_dates.find((d) => d.certification !== '')?.certification ?? null;
+    } else {
+      const entry = contentRatings?.results.find((r) => r.iso_3166_1 === region);
+      certification = entry?.rating && entry.rating !== '' ? entry.rating : null;
+    }
 
     // Optional auth: check if a completed TV show has new aired episodes
     let watchlistStatus: string | null = null;
@@ -96,7 +113,12 @@ router.get('/:type/:id', async (req, res, next) => {
       }
     }
 
-    res.json({ ...rest, watch_providers: watchProviders, watchlist_status: watchlistStatus });
+    res.json({
+      ...rest,
+      watch_providers: watchProviders,
+      watchlist_status: watchlistStatus,
+      certification,
+    });
   } catch (error) {
     next(error);
   }

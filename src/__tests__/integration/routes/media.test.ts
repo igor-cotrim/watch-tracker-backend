@@ -96,6 +96,50 @@ describe('Media routes', () => {
       expect(res.body).not.toHaveProperty('watch/providers');
     });
 
+    it('resolves the movie certification for the request region (default en-US → US)', async () => {
+      const media = makeTMDBMedia();
+      media.release_dates = {
+        results: [
+          { iso_3166_1: 'BR', release_dates: [{ certification: '14', type: 3 }] },
+          { iso_3166_1: 'US', release_dates: [{ certification: 'R', type: 3 }] },
+        ],
+      };
+      mockTmdb.getMediaDetails.mockResolvedValue(media);
+
+      const res = await request.get('/api/media/movie/550');
+      expect(res.body.certification).toBe('R');
+      expect(res.body).not.toHaveProperty('release_dates');
+    });
+
+    it('resolves the movie certification for pt-BR', async () => {
+      const media = makeTMDBMedia();
+      media.release_dates = {
+        results: [
+          { iso_3166_1: 'BR', release_dates: [{ certification: '14', type: 3 }] },
+          { iso_3166_1: 'US', release_dates: [{ certification: 'R', type: 3 }] },
+        ],
+      };
+      mockTmdb.getMediaDetails.mockResolvedValue(media);
+
+      const res = await request.get('/api/media/movie/550?language=pt-BR');
+      expect(res.body.certification).toBe('14');
+    });
+
+    it('resolves the TV rating and returns null when the region is absent', async () => {
+      const media = makeTMDBMedia({ id: 1396, name: 'Breaking Bad', title: undefined });
+      media.content_ratings = {
+        results: [{ iso_3166_1: 'US', rating: 'TV-MA' }],
+      };
+      mockTmdb.getMediaDetails.mockResolvedValue(media);
+
+      const usRes = await request.get('/api/media/tv/1396');
+      expect(usRes.body.certification).toBe('TV-MA');
+      expect(usRes.body).not.toHaveProperty('content_ratings');
+
+      const brRes = await request.get('/api/media/tv/1396?language=pt-BR');
+      expect(brRes.body.certification).toBeNull();
+    });
+
     it('returns 400 for invalid type', async () => {
       const res = await request.get('/api/media/anime/550');
       expect(res.status).toBe(400);

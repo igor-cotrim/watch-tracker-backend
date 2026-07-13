@@ -48,7 +48,7 @@ describe('tmdbService', () => {
       await tmdbService.getMediaDetails(550, 'movie', 'en-US');
 
       expect(mockAxiosGet).toHaveBeenCalledWith('/movie/550', {
-        params: { language: 'en-US', append_to_response: 'credits,watch/providers' },
+        params: { language: 'en-US', append_to_response: 'credits,watch/providers,release_dates' },
       });
     });
 
@@ -57,7 +57,9 @@ describe('tmdbService', () => {
 
       await tmdbService.getMediaDetails(1396, 'tv', 'pt-BR');
 
-      expect(mockAxiosGet).toHaveBeenCalledWith('/tv/1396', expect.any(Object));
+      expect(mockAxiosGet).toHaveBeenCalledWith('/tv/1396', {
+        params: { language: 'pt-BR', append_to_response: 'credits,watch/providers,content_ratings' },
+      });
     });
 
     it('forwards the language param', async () => {
@@ -66,7 +68,7 @@ describe('tmdbService', () => {
       await tmdbService.getMediaDetails(550, 'movie', 'pt-BR');
 
       expect(mockAxiosGet).toHaveBeenCalledWith('/movie/550', {
-        params: { language: 'pt-BR', append_to_response: 'credits,watch/providers' },
+        params: { language: 'pt-BR', append_to_response: 'credits,watch/providers,release_dates' },
       });
     });
 

@@ -82,6 +82,15 @@ export interface TMDBMediaDetails {
   'watch/providers'?: {
     results: Record<string, unknown>;
   };
+  release_dates?: {
+    results: Array<{
+      iso_3166_1: string;
+      release_dates: Array<{ certification: string; type: number }>;
+    }>;
+  };
+  content_ratings?: {
+    results: Array<{ iso_3166_1: string; rating: string }>;
+  };
 }
 
 export interface TMDBSearchResult {
@@ -150,8 +159,9 @@ export const tmdbService = {
     language: Language,
   ): Promise<TMDBMediaDetails> {
     try {
+      const ratingsEndpoint = type === 'movie' ? 'release_dates' : 'content_ratings';
       const { data } = await tmdbClient.get<TMDBMediaDetails>(`/${type}/${id}`, {
-        params: { language, append_to_response: 'credits,watch/providers' },
+        params: { language, append_to_response: `credits,watch/providers,${ratingsEndpoint}` },
       });
       return data;
     } catch (error) {
