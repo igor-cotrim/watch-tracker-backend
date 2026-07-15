@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { tmdbService } from '../services/tmdb.js';
 import { REGION } from '../config/constants.js';
 import { languageMiddleware } from '../middleware/language.js';
+import { dedupeProviders } from '../utils/providers.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
@@ -168,7 +169,7 @@ router.get('/providers', async (req, res, next) => {
       req.language,
       REGION.BRAZIL,
     );
-    res.json(results.results);
+    res.json(dedupeProviders(results.results));
   } catch (error) {
     next(error);
   }

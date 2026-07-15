@@ -14,6 +14,7 @@ import {
   detectNewSeasonForCompleted,
 } from '../services/watchStatus.js';
 import { languageMiddleware } from '../middleware/language.js';
+import { dedupeProviders, type ProviderLike } from '../utils/providers.js';
 import type { MediaType } from '../types/index.js';
 
 const router = Router();
@@ -114,9 +115,33 @@ router.get('/:type/:id', async (req, res, next) => {
       }
     }
 
+    // Collapse TMDB's same-brand provider variants (e.g. "Netflix" + "Netflix Standard
+    // with Ads") in each region's flatrate/rent/buy lists so the app shows one per brand.
+    const dedupedWatchProviders = watchProviders && {
+      ...watchProviders,
+      results: Object.fromEntries(
+        Object.entries(watchProviders.results).map(([region, offer]) => {
+          const { flatrate, rent, buy, ...offerRest } = offer as {
+            flatrate?: ProviderLike[];
+            rent?: ProviderLike[];
+            buy?: ProviderLike[];
+          };
+          return [
+            region,
+            {
+              ...offerRest,
+              ...(flatrate && { flatrate: dedupeProviders(flatrate) }),
+              ...(rent && { rent: dedupeProviders(rent) }),
+              ...(buy && { buy: dedupeProviders(buy) }),
+            },
+          ];
+        }),
+      ),
+    };
+
     res.json({
       ...rest,
-      watch_providers: watchProviders,
+      watch_providers: dedupedWatchProviders,
       watchlist_status: watchlistStatus,
       certification,
     });
