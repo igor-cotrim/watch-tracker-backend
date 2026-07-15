@@ -48,6 +48,13 @@ vi.mock('../../../middleware/auth.js', async (importOriginal) => {
   };
 });
 
+// Mock the Supabase client used by the media route's optional-auth helper
+// (`tryGetUserId`), so GET detail can resolve a caller from a Bearer token.
+const { mockGetUser } = vi.hoisted(() => ({ mockGetUser: vi.fn() }));
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({ auth: { getUser: mockGetUser } }),
+}));
+
 import { db, isUniqueConstraintError } from '../../../db/index.js';
 import { tmdbService } from '../../../services/tmdb.js';
 import {
@@ -77,6 +84,9 @@ describe('Media routes', () => {
     for (const fn of Object.values(mockTmdb)) fn.mockReset();
     mockIsUnique.mockReset();
     mockIsUnique.mockReturnValue(false);
+    // Default: unauthenticated (no user resolved from a token).
+    mockGetUser.mockReset();
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
   });
 
   describe('GET /api/media/:type/:id', () => {
@@ -140,6 +150,23 @@ describe('Media routes', () => {
 
       const brRes = await request.get('/api/media/tv/1396?language=pt-BR');
       expect(brRes.body.certification).toBeNull();
+    });
+
+    it('returns user_rating null when the request is unauthenticated', async () => {
+      mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: 550 }));
+
+      const res = await request.get('/api/media/movie/550');
+      expect(res.body.user_rating).toBeNull();
+    });
+
+    it("includes the caller's own rating when authenticated", async () => {
+      mockTmdb.getMediaDetails.mockResolvedValue(makeTMDBMedia({ id: 550 }));
+      mockGetUser.mockResolvedValue({ data: { user: { id: 'user-uuid' } }, error: null });
+      mockDb.select.mockReturnValue(makeSelectChain([{ rating: 7 }]));
+
+      const res = await request.get('/api/media/movie/550').set('Authorization', 'Bearer token');
+      expect(res.status).toBe(200);
+      expect(res.body.user_rating).toBe(7);
     });
 
     it('returns 400 for invalid type', async () => {
@@ -232,19 +259,21 @@ describe('Media routes', () => {
     function setupInsert(returnItem: unknown) {
       const mockInsert = {
         values: vi.fn().mockReturnThis(),
+        onConflictDoUpdate: vi.fn().mockReturnThis(),
         returning: vi.fn().mockResolvedValue([returnItem]),
       };
       mockDb.insert.mockReturnValue(mockInsert);
       return mockInsert;
     }
 
-    it('returns 201 with rating for valid body', async () => {
+    it('returns 200 with the upserted rating for a valid body', async () => {
       const rating = { id: 1, userId: 'user-uuid', tmdbId: 550, mediaType: 'movie', rating: 8 };
-      setupInsert(rating);
+      const mockInsert = setupInsert(rating);
 
       const res = await request.post('/api/media/movie/550/rate').send({ rating: 8 });
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(200);
       expect(res.body.rating).toBe(8);
+      expect(mockInsert.onConflictDoUpdate).toHaveBeenCalled();
     });
 
     it('returns 400 for rating below 1', async () => {
@@ -267,17 +296,16 @@ describe('Media routes', () => {
       expect(res.status).toBe(400);
     });
 
-    it('returns 409 when user already rated this media', async () => {
-      const dbError = new Error('unique violation');
-      const mockInsert = {
-        values: vi.fn().mockReturnThis(),
-        returning: vi.fn().mockRejectedValue(dbError),
-      };
-      mockDb.insert.mockReturnValue(mockInsert);
-      mockIsUnique.mockReturnValue(true);
+    it('updates the existing rating instead of failing when re-rating (upsert)', async () => {
+      const updated = { id: 1, userId: 'user-uuid', tmdbId: 550, mediaType: 'movie', rating: 6 };
+      const mockInsert = setupInsert(updated);
 
-      const res = await request.post('/api/media/movie/550/rate').send({ rating: 7 });
-      expect(res.status).toBe(409);
+      const res = await request.post('/api/media/movie/550/rate').send({ rating: 6 });
+      expect(res.status).toBe(200);
+      expect(res.body.rating).toBe(6);
+      // The conflict target updates the rating column rather than raising a duplicate error.
+      const conflictArg = mockInsert.onConflictDoUpdate.mock.calls[0][0] as { set: unknown };
+      expect(conflictArg.set).toEqual({ rating: 6 });
     });
   });
 

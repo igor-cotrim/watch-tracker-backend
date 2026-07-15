@@ -82,34 +82,49 @@ router.get('/:type/:id', async (req, res, next) => {
       certification = entry?.rating && entry.rating !== '' ? entry.rating : null;
     }
 
-    // Optional auth: check if a completed TV show has new aired episodes
+    // Optional auth: resolve the caller once, then surface their own rating
+    // (both media types) and any TV watchlist status.
+    const userId = await tryGetUserId(req);
+
+    let userRating: number | null = null;
+    if (userId) {
+      const [rating] = await db
+        .select({ rating: userRatings.rating })
+        .from(userRatings)
+        .where(
+          and(
+            eq(userRatings.userId, userId),
+            eq(userRatings.tmdbId, mediaId),
+            eq(userRatings.mediaType, type),
+          ),
+        );
+      userRating = rating?.rating ?? null;
+    }
+
     let watchlistStatus: string | null = null;
-    if (type === 'tv') {
-      const userId = await tryGetUserId(req);
-      if (userId) {
-        const [entry] = await db
-          .select()
-          .from(userWatchlist)
-          .where(
-            and(
-              eq(userWatchlist.userId, userId),
-              eq(userWatchlist.tmdbId, mediaId),
-              eq(userWatchlist.mediaType, 'tv'),
-            ),
-          );
+    if (type === 'tv' && userId) {
+      const [entry] = await db
+        .select()
+        .from(userWatchlist)
+        .where(
+          and(
+            eq(userWatchlist.userId, userId),
+            eq(userWatchlist.tmdbId, mediaId),
+            eq(userWatchlist.mediaType, 'tv'),
+          ),
+        );
 
-        if (entry) {
-          watchlistStatus = entry.status;
+      if (entry) {
+        watchlistStatus = entry.status;
 
-          // If the show was completed but a brand-new season has since aired,
-          // revive it to 'watching'. Uses the watched-episode baseline so it
-          // still triggers after a new season has fully finished airing
-          // (when next_episode_to_air is back to null).
-          if (entry.status === 'completed') {
-            const newSeason = await detectNewSeasonForCompleted(userId, mediaId, req.language);
-            if (newSeason) {
-              watchlistStatus = 'watching';
-            }
+        // If the show was completed but a brand-new season has since aired,
+        // revive it to 'watching'. Uses the watched-episode baseline so it
+        // still triggers after a new season has fully finished airing
+        // (when next_episode_to_air is back to null).
+        if (entry.status === 'completed') {
+          const newSeason = await detectNewSeasonForCompleted(userId, mediaId, req.language);
+          if (newSeason) {
+            watchlistStatus = 'watching';
           }
         }
       }
@@ -143,6 +158,7 @@ router.get('/:type/:id', async (req, res, next) => {
       ...rest,
       watch_providers: dedupedWatchProviders,
       watchlist_status: watchlistStatus,
+      user_rating: userRating,
       certification,
     });
   } catch (error) {
@@ -215,20 +231,18 @@ router.post('/:type/:id/rate', authMiddleware, async (req, res, next) => {
       return;
     }
 
-    try {
-      const [rating] = await db
-        .insert(userRatings)
-        .values({ userId, tmdbId: mediaId, mediaType: type, rating: parsed.data.rating })
-        .returning();
+    // Upsert on the (userId, tmdbId, mediaType) unique index so re-rating updates
+    // the existing row instead of failing with a duplicate-key error.
+    const [rating] = await db
+      .insert(userRatings)
+      .values({ userId, tmdbId: mediaId, mediaType: type, rating: parsed.data.rating })
+      .onConflictDoUpdate({
+        target: [userRatings.userId, userRatings.tmdbId, userRatings.mediaType],
+        set: { rating: parsed.data.rating },
+      })
+      .returning();
 
-      res.status(201).json(rating);
-    } catch (dbError) {
-      if (isUniqueConstraintError(dbError)) {
-        res.status(409).json({ error: 'You have already rated this media' });
-        return;
-      }
-      throw dbError;
-    }
+    res.status(200).json(rating);
   } catch (error) {
     next(error);
   }
