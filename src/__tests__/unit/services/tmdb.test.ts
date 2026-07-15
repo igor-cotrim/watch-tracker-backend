@@ -300,6 +300,43 @@ describe('tmdbService', () => {
     });
   });
 
+  describe('getRecommendations', () => {
+    it('calls /<type>/<id>/recommendations with language', async () => {
+      mockAxiosGet.mockResolvedValue({ data: makeTMDBSearchResult() });
+
+      await tmdbService.getRecommendations(550, 'movie', 'en-US');
+
+      expect(mockAxiosGet).toHaveBeenCalledWith('/movie/550/recommendations', {
+        params: { language: 'en-US' },
+      });
+    });
+
+    it('works for tv type and passes page param when provided', async () => {
+      mockAxiosGet.mockResolvedValue({ data: makeTMDBSearchResult() });
+
+      await tmdbService.getRecommendations(1396, 'tv', 'pt-BR', 2);
+
+      expect(mockAxiosGet).toHaveBeenCalledWith('/tv/1396/recommendations', {
+        params: { language: 'pt-BR', page: 2 },
+      });
+    });
+
+    it('returns TMDBSearchResult', async () => {
+      mockAxiosGet.mockResolvedValue({ data: makeTMDBSearchResult([{ id: 641 } as never]) });
+
+      const result = await tmdbService.getRecommendations(550, 'movie', 'en-US');
+      expect(result.results).toHaveLength(1);
+    });
+
+    it('throws TMDBError on failure', async () => {
+      mockAxiosGet.mockRejectedValue(makeAxiosError(404, 'Not found'));
+
+      await expect(tmdbService.getRecommendations(99999, 'movie', 'en-US')).rejects.toBeInstanceOf(
+        TMDBError,
+      );
+    });
+  });
+
   describe('getGenres', () => {
     it('calls /genre/<type>/list with language', async () => {
       mockAxiosGet.mockResolvedValue({ data: { genres: [] } });

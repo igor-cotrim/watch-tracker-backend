@@ -150,6 +150,29 @@ router.get('/:type/:id', async (req, res, next) => {
   }
 });
 
+// GET /:type/:id/recommendations — get recommended media from TMDB (no auth)
+router.get('/:type/:id/recommendations', async (req, res, next) => {
+  try {
+    const { type, id } = req.params;
+
+    if (type !== 'movie' && type !== 'tv') {
+      res.status(400).json({ error: 'Type must be "movie" or "tv"' });
+      return;
+    }
+
+    const mediaId = parseInt(id, 10);
+    if (isNaN(mediaId)) {
+      res.status(400).json({ error: 'Invalid media ID' });
+      return;
+    }
+
+    const result = await tmdbService.getRecommendations(mediaId, type as MediaType, req.language);
+    res.json(result.results);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /tv/:id/season/:seasonNumber — get season details from TMDB (no auth)
 router.get('/tv/:id/season/:seasonNumber', async (req, res, next) => {
   try {

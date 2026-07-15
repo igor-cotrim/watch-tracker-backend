@@ -15,6 +15,7 @@ vi.mock('../../../db/index.js', () => ({
 vi.mock('../../../services/tmdb.js', () => ({
   tmdbService: {
     getMediaDetails: vi.fn(),
+    getRecommendations: vi.fn(),
     getSeasonDetails: vi.fn(),
     getTrending: vi.fn(),
     search: vi.fn(),
@@ -52,6 +53,7 @@ import { tmdbService } from '../../../services/tmdb.js';
 import {
   makeTMDBMedia,
   makeTMDBSeasonDetails,
+  makeTMDBSearchResult,
   makeNextEpisode,
 } from '../../helpers/mockFactory.js';
 
@@ -148,6 +150,61 @@ describe('Media routes', () => {
     it('returns 400 for non-numeric id', async () => {
       const res = await request.get('/api/media/movie/abc');
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/media/:type/:id/recommendations', () => {
+    it('returns 200 with the results array for a movie', async () => {
+      mockTmdb.getRecommendations.mockResolvedValue(
+        makeTMDBSearchResult([
+          { id: 641, title: 'Requiem for a Dream' } as never,
+          { id: 807, title: 'Se7en' } as never,
+        ]),
+      );
+
+      const res = await request.get('/api/media/movie/550/recommendations');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toHaveLength(2);
+      expect(res.body[0].id).toBe(641);
+    });
+
+    it('works for tv type', async () => {
+      mockTmdb.getRecommendations.mockResolvedValue(
+        makeTMDBSearchResult([{ id: 7704, name: 'Legend of the Seeker' } as never]),
+      );
+
+      const res = await request.get('/api/media/tv/1399/recommendations');
+      expect(res.status).toBe(200);
+      expect(res.body[0].name).toBe('Legend of the Seeker');
+      expect(mockTmdb.getRecommendations).toHaveBeenCalledWith(1399, 'tv', 'en-US');
+    });
+
+    it('returns an empty array when TMDB has no recommendations', async () => {
+      mockTmdb.getRecommendations.mockResolvedValue(makeTMDBSearchResult([]));
+
+      const res = await request.get('/api/media/movie/550/recommendations');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('returns 400 for invalid type', async () => {
+      const res = await request.get('/api/media/anime/550/recommendations');
+      expect(res.status).toBe(400);
+      expect(mockTmdb.getRecommendations).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for non-numeric id', async () => {
+      const res = await request.get('/api/media/movie/abc/recommendations');
+      expect(res.status).toBe(400);
+      expect(mockTmdb.getRecommendations).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when TMDB fails', async () => {
+      mockTmdb.getRecommendations.mockRejectedValue(new Error('TMDB unavailable'));
+
+      const res = await request.get('/api/media/movie/550/recommendations');
+      expect(res.status).toBe(500);
     });
   });
 

@@ -275,6 +275,22 @@ export const tmdbService = {
     }
   },
 
+  async getRecommendations(
+    id: number,
+    type: MediaType,
+    language: Language,
+    page?: number,
+  ): Promise<TMDBSearchResult> {
+    try {
+      const { data } = await tmdbClient.get<TMDBSearchResult>(`/${type}/${id}/recommendations`, {
+        params: { language, ...(page && { page }) },
+      });
+      return data;
+    } catch (error) {
+      handleTMDBError(error);
+    }
+  },
+
   async getGenres(type: MediaType, language: Language): Promise<TMDBGenreList> {
     try {
       const { data } = await tmdbClient.get<TMDBGenreList>(`/genre/${type}/list`, {
