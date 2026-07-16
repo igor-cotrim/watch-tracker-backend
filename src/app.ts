@@ -16,6 +16,10 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
+// Trust the Cloud Run front-end proxy (1 hop) so express-rate-limit keys buckets
+// by the real client IP instead of a single shared proxy address.
+app.set('trust proxy', 1);
+
 // Security
 app.use(helmet());
 app.use(cors());

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { tmdbService } from '../services/tmdb.js';
 import { REGION } from '../config/constants.js';
 import { languageMiddleware } from '../middleware/language.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 import { dedupeProviders } from '../utils/providers.js';
 import type { MediaType } from '../types/index.js';
 
@@ -9,8 +10,12 @@ const router = Router();
 
 router.use(languageMiddleware);
 
+// TTLs: media lists change slowly (minutes); providers/genres change rarely (hours).
+const LIST_TTL = 5 * 60; // 5 minutes
+const CATALOG_TTL = 12 * 60 * 60; // 12 hours
+
 // GET / — discover with filters
-router.get('/', async (req, res, next) => {
+router.get('/', cacheMiddleware(LIST_TTL), async (req, res, next) => {
   try {
     const {
       type = 'movie',
@@ -51,7 +56,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /trending — trending media
-router.get('/trending', async (req, res, next) => {
+router.get('/trending', cacheMiddleware(LIST_TTL), async (req, res, next) => {
   try {
     const { type = 'all', time_window = 'week', page } = req.query;
 
@@ -82,7 +87,7 @@ router.get('/trending', async (req, res, next) => {
 });
 
 // GET /top-rated — top rated movies or TV
-router.get('/top-rated', async (req, res, next) => {
+router.get('/top-rated', cacheMiddleware(LIST_TTL), async (req, res, next) => {
   try {
     const { type = 'movie', page } = req.query;
 
@@ -103,7 +108,7 @@ router.get('/top-rated', async (req, res, next) => {
 });
 
 // GET /upcoming — upcoming movies (Brazil)
-router.get('/upcoming', async (req, res, next) => {
+router.get('/upcoming', cacheMiddleware(LIST_TTL), async (req, res, next) => {
   try {
     const { page } = req.query;
     const results = await tmdbService.getUpcoming(
@@ -117,7 +122,7 @@ router.get('/upcoming', async (req, res, next) => {
 });
 
 // GET /popular — popular movies or TV
-router.get('/popular', async (req, res, next) => {
+router.get('/popular', cacheMiddleware(LIST_TTL), async (req, res, next) => {
   try {
     const { type = 'movie', page } = req.query;
 
@@ -138,7 +143,7 @@ router.get('/popular', async (req, res, next) => {
 });
 
 // GET /genres — list of genres for a media type
-router.get('/genres', async (req, res, next) => {
+router.get('/genres', cacheMiddleware(CATALOG_TTL), async (req, res, next) => {
   try {
     const { type = 'movie' } = req.query;
 
@@ -155,7 +160,7 @@ router.get('/genres', async (req, res, next) => {
 });
 
 // GET /providers — list of streaming providers (Brazil)
-router.get('/providers', async (req, res, next) => {
+router.get('/providers', cacheMiddleware(CATALOG_TTL), async (req, res, next) => {
   try {
     const { type = 'movie' } = req.query;
 
@@ -196,7 +201,7 @@ router.get('/search', async (req, res, next) => {
 });
 
 // GET /now-playing — now playing in BR cinemas
-router.get('/now-playing', async (req, res, next) => {
+router.get('/now-playing', cacheMiddleware(LIST_TTL), async (req, res, next) => {
   try {
     const { page } = req.query;
     const results = await tmdbService.getNowPlaying(
