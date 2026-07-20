@@ -248,6 +248,40 @@ router.post('/:type/:id/rate', authMiddleware, async (req, res, next) => {
   }
 });
 
+// DELETE /:type/:id/rate — remove user rating (auth required)
+router.delete('/:type/:id/rate', authMiddleware, async (req, res, next) => {
+  try {
+    const { id: userId } = getAuthUser(req);
+    const type = String(req.params.type);
+    const id = String(req.params.id);
+
+    if (type !== 'movie' && type !== 'tv') {
+      res.status(400).json({ error: 'Type must be "movie" or "tv"' });
+      return;
+    }
+
+    const mediaId = parseInt(id, 10);
+    if (isNaN(mediaId)) {
+      res.status(400).json({ error: 'Invalid media ID' });
+      return;
+    }
+
+    await db
+      .delete(userRatings)
+      .where(
+        and(
+          eq(userRatings.userId, userId),
+          eq(userRatings.tmdbId, mediaId),
+          eq(userRatings.mediaType, type),
+        ),
+      );
+
+    res.json({ message: 'Rating removed' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /tv/:id/episodes/:seasonNumber/:episodeNumber/watch — mark episode watched (auth required)
 router.post(
   '/tv/:id/episodes/:seasonNumber/:episodeNumber/watch',
