@@ -40,10 +40,7 @@ router.get('/stats', async (req, res, next) => {
           .select({ value: count() })
           .from(userEpisodesWatched)
           .where(eq(userEpisodesWatched.userId, userId)),
-        db
-          .select({ value: count() })
-          .from(userRatings)
-          .where(eq(userRatings.userId, userId)),
+        db.select({ value: count() }).from(userRatings).where(eq(userRatings.userId, userId)),
         db
           .select({ value: avg(userRatings.rating) })
           .from(userRatings)
