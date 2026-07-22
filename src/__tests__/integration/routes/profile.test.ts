@@ -57,20 +57,20 @@ describe('Profile routes', () => {
     it('returns 200 with all stats fields', async () => {
       mockDb.select
         .mockReturnValueOnce(makeSelectChain(makeCountResult(5))) // movies_watched
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(10))) // movies_in_watchlist
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(3))) // shows_tracking
         .mockReturnValueOnce(makeSelectChain(makeCountResult(2))) // shows_completed
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(42))); // episodes_watched
+        .mockReturnValueOnce(makeSelectChain(makeCountResult(42))) // episodes_watched
+        .mockReturnValueOnce(makeSelectChain(makeCountResult(8))) // titles_rated
+        .mockReturnValueOnce(makeSelectChain([{ value: '7.5' }])); // average_rating
 
       const res = await request.get('/api/profile/stats');
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         movies_watched: 5,
-        movies_in_watchlist: 10,
-        shows_tracking: 3,
         shows_completed: 2,
         episodes_watched: 42,
+        titles_rated: 8,
+        average_rating: 7.5,
       });
     });
 
@@ -80,17 +80,17 @@ describe('Profile routes', () => {
         .mockReturnValueOnce(makeSelectChain(makeCountResult(0)))
         .mockReturnValueOnce(makeSelectChain(makeCountResult(0)))
         .mockReturnValueOnce(makeSelectChain(makeCountResult(0)))
-        .mockReturnValueOnce(makeSelectChain(makeCountResult(0)));
+        .mockReturnValueOnce(makeSelectChain([{ value: null }])); // avg is null with no ratings
 
       const res = await request.get('/api/profile/stats');
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         movies_watched: 0,
-        movies_in_watchlist: 0,
-        shows_tracking: 0,
         shows_completed: 0,
         episodes_watched: 0,
+        titles_rated: 0,
+        average_rating: 0,
       });
     });
 
@@ -107,10 +107,10 @@ describe('Profile routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         movies_watched: 0,
-        movies_in_watchlist: 0,
-        shows_tracking: 0,
         shows_completed: 0,
         episodes_watched: 0,
+        titles_rated: 0,
+        average_rating: 0,
       });
     });
 

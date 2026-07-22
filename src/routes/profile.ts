@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, avg } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { userWatchlist, userEpisodesWatched, userRatings, profiles } from '../db/schema.js';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -14,7 +14,7 @@ router.get('/stats', async (req, res, next) => {
   try {
     const { id: userId } = getAuthUser(req);
 
-    const [moviesWatched, moviesInWatchlist, showsTracking, showsCompleted, episodesWatched] =
+    const [moviesWatched, showsCompleted, episodesWatched, titlesRated, averageRating] =
       await Promise.all([
         db
           .select({ value: count() })
@@ -29,14 +29,6 @@ router.get('/stats', async (req, res, next) => {
         db
           .select({ value: count() })
           .from(userWatchlist)
-          .where(and(eq(userWatchlist.userId, userId), eq(userWatchlist.mediaType, 'movie'))),
-        db
-          .select({ value: count() })
-          .from(userWatchlist)
-          .where(and(eq(userWatchlist.userId, userId), eq(userWatchlist.mediaType, 'tv'))),
-        db
-          .select({ value: count() })
-          .from(userWatchlist)
           .where(
             and(
               eq(userWatchlist.userId, userId),
@@ -48,14 +40,22 @@ router.get('/stats', async (req, res, next) => {
           .select({ value: count() })
           .from(userEpisodesWatched)
           .where(eq(userEpisodesWatched.userId, userId)),
+        db
+          .select({ value: count() })
+          .from(userRatings)
+          .where(eq(userRatings.userId, userId)),
+        db
+          .select({ value: avg(userRatings.rating) })
+          .from(userRatings)
+          .where(eq(userRatings.userId, userId)),
       ]);
 
     res.json({
       movies_watched: Number(moviesWatched[0]?.value ?? 0),
-      movies_in_watchlist: Number(moviesInWatchlist[0]?.value ?? 0),
-      shows_tracking: Number(showsTracking[0]?.value ?? 0),
       shows_completed: Number(showsCompleted[0]?.value ?? 0),
       episodes_watched: Number(episodesWatched[0]?.value ?? 0),
+      titles_rated: Number(titlesRated[0]?.value ?? 0),
+      average_rating: Number(averageRating[0]?.value ?? 0),
     });
   } catch (error) {
     next(error);
