@@ -30,6 +30,18 @@ function handleTMDBError(error: unknown): never {
   throw error;
 }
 
+// In-memory TTL cache for media details. This is the shared choke point for the
+// watchlist, continue-watching, upcoming and detail routes, so caching here makes
+// repeated list loads near-instant and sharply reduces the number of TMDB requests
+// (and thus rate-limit failures) for large watchlists. Only successful responses
+// are cached, so a transient error is retried on the next request rather than pinned.
+const MEDIA_DETAILS_TTL_MS = 60 * 60 * 1000; // 60 minutes
+const mediaDetailsCache = new Map<string, { data: TMDBMediaDetails; expiresAt: number }>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface TMDBMediaDetails {
   id: number;
   title?: string;
@@ -158,15 +170,36 @@ export const tmdbService = {
     type: MediaType,
     language: Language,
   ): Promise<TMDBMediaDetails> {
-    try {
-      const ratingsEndpoint = type === 'movie' ? 'release_dates' : 'content_ratings';
-      const { data } = await tmdbClient.get<TMDBMediaDetails>(`/${type}/${id}`, {
-        params: { language, append_to_response: `credits,watch/providers,${ratingsEndpoint}` },
-      });
-      return data;
-    } catch (error) {
-      handleTMDBError(error);
+    const cacheKey = `${type}:${id}:${language}`;
+    const cached = mediaDetailsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
+
+    const ratingsEndpoint = type === 'movie' ? 'release_dates' : 'content_ratings';
+
+    // One retry with a short backoff on rate-limit / transient server errors,
+    // which are the usual cause of enrichment falling back to "Unknown".
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { data } = await tmdbClient.get<TMDBMediaDetails>(`/${type}/${id}`, {
+          params: { language, append_to_response: `credits,watch/providers,${ratingsEndpoint}` },
+        });
+        mediaDetailsCache.set(cacheKey, { data, expiresAt: Date.now() + MEDIA_DETAILS_TTL_MS });
+        return data;
+      } catch (error) {
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+        const retryable = status === 429 || (status !== undefined && status >= 500);
+        if (retryable && attempt === 0) {
+          await sleep(500);
+          continue;
+        }
+        handleTMDBError(error);
+      }
+    }
+
+    // Unreachable — the loop either returns or throws — but satisfies the type checker.
+    throw new TMDBError('TMDB API error: exhausted retries', 500);
   },
 
   async getTrending(

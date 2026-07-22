@@ -7,6 +7,7 @@ import { authMiddleware, getAuthUser } from '../middleware/auth.js';
 import { languageMiddleware } from '../middleware/language.js';
 import { tmdbService } from '../services/tmdb.js';
 import { detectNewSeasonForCompleted } from '../services/watchStatus.js';
+import { mapWithConcurrency } from '../utils/concurrency.js';
 import { GENRE_ID } from '../config/constants.js';
 import type { MediaType } from '../types/index.js';
 
@@ -44,52 +45,52 @@ router.get('/', async (req, res, next) => {
       .from(userWatchlist)
       .where(and(...conditions));
 
-    // Enrich with TMDB data (title, poster, isAnime)
-    const enriched = await Promise.all(
-      items.map(async (item) => {
-        try {
-          const details = await tmdbService.getMediaDetails(
-            item.tmdbId,
-            item.mediaType as MediaType,
-            req.language,
-          );
-          const isAnime =
-            item.mediaType === 'tv' &&
-            Array.isArray(details.origin_country) &&
-            details.origin_country.includes('JP') &&
-            details.genres?.some((g) => g.id === GENRE_ID.ANIMATION);
+    // Enrich with TMDB data (title, poster, isAnime). Throttled so a large
+    // watchlist doesn't fan out into hundreds of simultaneous TMDB requests,
+    // which would get rate-limited and fall back to "Unknown" for a subset.
+    const enriched = await mapWithConcurrency(items, 8, async (item) => {
+      try {
+        const details = await tmdbService.getMediaDetails(
+          item.tmdbId,
+          item.mediaType as MediaType,
+          req.language,
+        );
+        const isAnime =
+          item.mediaType === 'tv' &&
+          Array.isArray(details.origin_country) &&
+          details.origin_country.includes('JP') &&
+          details.genres?.some((g) => g.id === GENRE_ID.ANIMATION);
 
-          // Auto-revive a completed show when a brand-new season has aired:
-          // flip it back to 'watching' and flag the new season for the client.
-          let status = item.status;
-          let newSeasonNumber: number | null = null;
-          if (item.mediaType === 'tv' && item.status === 'completed') {
-            const detected = await detectNewSeasonForCompleted(userId, item.tmdbId, req.language);
-            if (detected) {
-              status = 'watching';
-              newSeasonNumber = detected;
-            }
+        // Auto-revive a completed show when a brand-new season has aired:
+        // flip it back to 'watching' and flag the new season for the client.
+        let status = item.status;
+        let newSeasonNumber: number | null = null;
+        if (item.mediaType === 'tv' && item.status === 'completed') {
+          const detected = await detectNewSeasonForCompleted(userId, item.tmdbId, req.language);
+          if (detected) {
+            status = 'watching';
+            newSeasonNumber = detected;
           }
-
-          return {
-            ...item,
-            status,
-            title: details.title ?? details.name ?? 'Unknown',
-            posterPath: details.poster_path,
-            isAnime: isAnime || false,
-            newSeasonNumber,
-          };
-        } catch {
-          return {
-            ...item,
-            title: 'Unknown',
-            posterPath: null,
-            isAnime: false,
-            newSeasonNumber: null,
-          };
         }
-      }),
-    );
+
+        return {
+          ...item,
+          status,
+          title: details.title ?? details.name ?? 'Unknown',
+          posterPath: details.poster_path,
+          isAnime: isAnime || false,
+          newSeasonNumber,
+        };
+      } catch {
+        return {
+          ...item,
+          title: 'Unknown',
+          posterPath: null,
+          isAnime: false,
+          newSeasonNumber: null,
+        };
+      }
+    });
 
     res.json(enriched);
   } catch (error) {

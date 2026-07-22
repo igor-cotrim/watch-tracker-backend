@@ -5,6 +5,7 @@ import { userWatchlist, userRatings } from '../db/schema.js';
 import { authMiddleware, getAuthUser } from '../middleware/auth.js';
 import { languageMiddleware } from '../middleware/language.js';
 import { tmdbService } from '../services/tmdb.js';
+import { mapWithConcurrency } from '../utils/concurrency.js';
 
 const router = Router();
 
@@ -28,28 +29,6 @@ const importSchema = z.object({
 });
 
 type ImportItem = z.infer<typeof importItemSchema>;
-
-/**
- * Runs `fn` over `items` with at most `limit` concurrent executions, preserving
- * input order in the returned array. Used to throttle TMDB resolution calls.
- */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const index = cursor++;
-      if (index >= items.length) break;
-      results[index] = await fn(items[index], index);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
 
 /** Parses a Date from an ISO-ish string, returning undefined if invalid. */
 function parseDate(value?: string): Date | undefined {
